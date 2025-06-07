@@ -12,6 +12,22 @@ deactivate
 
 # Bakery Data Engineering Project
 
+## To start the program: 
+
+run your docker desktop 
+
+### To start everything:
+make start
+
+### To initialize the topics and tables after starting:
+make init
+
+### To shut everything down completely:
+make down
+
+
+
+
 ## Overview
 This project implements a comprehensive data engineering solution for a bakery business, featuring real-time streaming, batch processing, data quality management, and machine learning feature engineering.
 
@@ -21,8 +37,6 @@ This project implements a comprehensive data engineering solution for a bakery b
 - **Processing Layer**: Apache Spark for batch and stream processing
 - **Table Format**: Apache Iceberg for ACID transactions and time travel
 - **Orchestration**: Apache Airflow for workflow management
-
-## Quick Start
 
 ### Prerequisites
 - Docker Desktop with at least 8GB RAM allocated
@@ -62,12 +76,21 @@ docker-compose up -d pos-producer iot-producer
 
 **Access Points**
 
-Airflow UI: http://localhost:8080 (admin/admin)
-Kafka UI: http://localhost:8081
-Spark UI: http://localhost:8082
-MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
+Airflow UI: http://localhost:8080
 
-## Data Pipeline
+username: admin 
+password: admin
+
+Kafka UI: http://localhost:8081
+
+Spark UI: http://localhost:8082
+
+MinIO Console: http://localhost:9001 
+
+username: minioadmin
+password: minioadmin
+
+# Data Pipeline
 Real-time Processing
 
 POS and IoT producers generate realistic streaming data
@@ -75,22 +98,15 @@ Kafka ingests and buffers the streams
 Spark Streaming processes data with <1 minute latency
 Real-time aggregations available for dashboards
 
-Batch Processing
+## Batch Processing
 
 Daily ETL jobs orchestrated by Airflow
 Bronze → Silver → Gold layer transformations
 Late-arriving data handled up to 48 hours
 Data quality checks at each layer
 
-Key Features
 
-Type 2 SCD: Tracking historical changes in pricing and customer data
-Late Arrival Handling: Reconciliation process for delayed data
-ML Feature Engineering: Automated feature generation for 3 use cases
-Data Quality: Comprehensive validation and monitoring
-Alerting: Real-time anomaly detection and maintenance alerts
-
-Testing
+## Testing
 Run a Complete Pipeline Test
 
 Trigger the batch ETL DAG in Airflow
@@ -98,36 +114,8 @@ Monitor data flow through Kafka UI
 Check MinIO for data in each layer
 Verify data quality reports
 
-Verify Streaming
+## Verify Streaming
 
 Watch Kafka UI for incoming messages
 Check Spark Streaming jobs in Spark UI
 Monitor real-time aggregations
-
-Troubleshooting
-Common Issues
-
-Services not starting: Check Docker memory allocation
-Connection errors: Ensure all services are on bakery-network
-Data not flowing: Check producer logs with docker logs <container>
-
-Logs
-
-Airflow: orchestration/logs/
-Spark: Available in Spark UI
-Kafka: docker logs kafka
-
-Project Structure
-bakery-data-engineering/
-├── orchestration/       # Airflow DAGs and configuration
-├── streaming/          # Kafka setup and data producers
-├── processing/         # Spark jobs and transformations
-├── docs/              # Additional documentation
-└── README.md          # This file
-Business Context
-This solution addresses key bakery industry challenges:
-
-Demand Forecasting: ML features for predicting product demand
-Waste Reduction: Real-time monitoring and optimization
-Equipment Maintenance: Predictive maintenance using IoT data
-Quality Control: Automated data quality checks
