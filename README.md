@@ -1,11 +1,14 @@
-## To create venv in each folder and subfolder: orchestration, processing, streaming !
+## To create venv in root folder 
 python -m venv .venv
 
 ## Activate the venv
 .venv/Scripts/activate
 
 ## Download requierments 
-pip install --no-cache-dir -r requierments.txt
+pip install --no-cache-dir -r orchestration/requirements.txt
+
+## Deactivate the venv
+deactivate
 
 # Bakery Data Engineering Project
 
