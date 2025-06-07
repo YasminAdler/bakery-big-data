@@ -90,32 +90,3 @@ MinIO Console: http://localhost:9001
 username: minioadmin
 password: minioadmin
 
-# Data Pipeline
-Real-time Processing
-
-POS and IoT producers generate realistic streaming data
-Kafka ingests and buffers the streams
-Spark Streaming processes data with <1 minute latency
-Real-time aggregations available for dashboards
-
-## Batch Processing
-
-Daily ETL jobs orchestrated by Airflow
-Bronze → Silver → Gold layer transformations
-Late-arriving data handled up to 48 hours
-Data quality checks at each layer
-
-
-## Testing
-Run a Complete Pipeline Test
-
-Trigger the batch ETL DAG in Airflow
-Monitor data flow through Kafka UI
-Check MinIO for data in each layer
-Verify data quality reports
-
-## Verify Streaming
-
-Watch Kafka UI for incoming messages
-Check Spark Streaming jobs in Spark UI
-Monitor real-time aggregations
