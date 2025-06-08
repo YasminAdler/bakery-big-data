@@ -7,9 +7,6 @@ python -m venv .venv
 ## Download requierments 
 pip install --no-cache-dir -r orchestration/requirements.txt
 
-## Deactivate the venv
-deactivate
-
 # Bakery Data Engineering Project
 
 ## To start the program: 
