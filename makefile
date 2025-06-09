@@ -64,7 +64,7 @@ down:
 init:
 	@echo "[INIT] Initializing the system..."
 	@echo "=> Waiting 15 seconds for Kafka to be fully ready..."
-	@sleep 15
+	@timeout 15
 	@echo "=> Creating Kafka topics..."
 	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T kafka kafka-topics --create --topic bakery-pos-events --bootstrap-server kafka:9092 --partitions 3 --replication-factor 1 --if-not-exists || echo "Topic bakery-pos-events already exists"
 	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T kafka kafka-topics --create --topic bakery-iot-events --bootstrap-server kafka:9092 --partitions 2 --replication-factor 1 --if-not-exists || echo "Topic bakery-iot-events already exists"
