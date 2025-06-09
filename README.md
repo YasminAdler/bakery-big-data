@@ -13,8 +13,12 @@ pip install --no-cache-dir -r orchestration/requirements.txt
 
 run your docker desktop 
 
+docker network create bakery-network
+
 ### To start everything:
 make start
+
+
 
 ### To initialize the topics and tables after starting:
 make init
