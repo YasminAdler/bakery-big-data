@@ -19,7 +19,6 @@ docker network create bakery-network
 make start
 
 
-
 ### To initialize the topics and tables after starting:
 make init
 

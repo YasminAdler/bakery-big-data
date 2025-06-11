@@ -49,7 +49,7 @@ services:
 
   pos-producer:
     build:
-      context: ./streaming/producers  # Changed from ./producers
+      context: ./streaming/producers  
       dockerfile: Dockerfile
     container_name: pos-producer
     depends_on:
@@ -63,7 +63,7 @@ services:
 
   iot-producer:
     build:
-      context: ./streaming/producers  # Changed from ./producers
+      context: ./streaming/producers 
       dockerfile: Dockerfile
     container_name: iot-producer
     depends_on:
@@ -72,6 +72,48 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       PRODUCER_TYPE: iot
     command: python iot_producer.py
+    networks:
+      - bakery-network
+
+  inventory-producer:
+    build:
+      context: ./streaming/producers
+      dockerfile: Dockerfile
+    container_name: inventory-producer
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PRODUCER_TYPE: inventory
+    command: python inventory_producer.py
+    networks:
+      - bakery-network
+
+  feedback-producer:
+    build:
+      context: ./streaming/producers
+      dockerfile: Dockerfile
+    container_name: feedback-producer
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PRODUCER_TYPE: feedback
+    command: python feedback_producer.py
+    networks:
+      - bakery-network
+
+  batch-producer:
+    build:
+      context: ./streaming/producers
+      dockerfile: Dockerfile
+    container_name: batch-producer
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PRODUCER_TYPE: batch
+    command: python batch_producer.py
     networks:
       - bakery-network
 
