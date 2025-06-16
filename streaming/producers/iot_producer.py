@@ -359,8 +359,8 @@ class IoTProducer:
                         print(f"🚨 ERROR: {equipment['name']} - {event['raw_payload']['error_code']}")
                     elif event["operational_status"] == "WARNING":
                         print(f"⚠️  WARNING: {equipment['name']} - {event['raw_payload']['error_code']}")
-                    elif state["stress_level"] > 0.7:
-                        print(f"😰 High stress: {equipment['name']} - Stress: {state['stress_level']:.2f}")
+                    elif event["raw_payload"]["stress_level"] > 0.7:  # Fixed: use from raw_payload
+                        print(f"😰 High stress: {equipment['name']} - Stress: {event['raw_payload']['stress_level']:.2f}")
                 
                 reading_counter += len(self.equipment)
                 if reading_counter % 100 == 0:

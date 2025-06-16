@@ -9,12 +9,10 @@ services:
       - postgres-db-volume:/var/lib/postgresql/data
     networks:
       - bakery-network
-
   redis:
     image: redis:latest
     networks:
       - bakery-network
-
   airflow-webserver:
     image: apache/airflow:2.7.0
     command: webserver
@@ -30,14 +28,13 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
     volumes:
-      - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
-      - ./plugins:/opt/airflow/plugins
+      - airflow-dags:/opt/airflow/dags
+      - airflow-logs:/opt/airflow/logs   # Changed from bind mount
+      - airflow-plugins:/opt/airflow/plugins   # Changed from bind mount
     ports:
       - "8080:8080"
     networks:
       - bakery-network
-
   airflow-scheduler:
     image: apache/airflow:2.7.0
     command: scheduler
@@ -52,12 +49,11 @@ services:
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
     volumes:
-      - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
-      - ./plugins:/opt/airflow/plugins
+      - airflow-dags:/opt/airflow/dags   # Changed from bind mount
+      - airflow-logs:/opt/airflow/logs   # Changed from bind mount
+      - airflow-plugins:/opt/airflow/plugins   # Changed from bind mount
     networks:
       - bakery-network
-
   airflow-worker:
     image: apache/airflow:2.7.0
     command: celery worker
@@ -72,12 +68,11 @@ services:
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
     volumes:
-      - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
-      - ./plugins:/opt/airflow/plugins
+      - airflow-dags:/opt/airflow/dags   # Changed from bind mount
+      - airflow-logs:/opt/airflow/logs   # Changed from bind mount
+      - airflow-plugins:/opt/airflow/plugins   # Changed from bind mount
     networks:
       - bakery-network
-
   airflow-init:
     image: apache/airflow:2.7.0
     entrypoint: /bin/bash
@@ -99,10 +94,11 @@ services:
       - redis
     networks:
       - bakery-network
-
 volumes:
   postgres-db-volume:
-
+  airflow-dags:
+  airflow-logs:    # New named volume for logs
+  airflow-plugins: # New named volume for plugins
 networks:
   bakery-network:
     external: true

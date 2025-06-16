@@ -27,17 +27,15 @@ def process_pos_stream():
     pos_schema = StructType([
         StructField("event_id", StringType(), True),
         StructField("event_time", StringType(), True),
+        StructField("ingestion_time", StringType(), True),
         StructField("product_id", IntegerType(), True),
-        StructField("product_name", StringType(), True),
         StructField("store_id", IntegerType(), True),
         StructField("quantity", IntegerType(), True),
-        StructField("unit_price", DoubleType(), True),
-        StructField("total_price", DoubleType(), True),
+        StructField("unit_price", DecimalType(10,2), True),
         StructField("customer_id", StringType(), True),
-        StructField("payment_method", StringType(), True),
-        StructField("time_of_day", StringType(), True),
-        StructField("is_member", BooleanType(), True),
-        StructField("discount_applied", IntegerType(), True)
+        StructField("Date", DateType(), True),
+        StructField("processing_status", StringType(), True),
+        StructField("raw_payload", StringType(), True)
     ])
     
     # Read from Kafka
@@ -52,93 +50,46 @@ def process_pos_stream():
     
     # Parse JSON data
     parsed_stream = kafka_stream.select(
-        col("key").cast("string"),
         from_json(col("value").cast("string"), pos_schema).alias("data"),
         col("timestamp").alias("kafka_timestamp")
     ).select("data.*", "kafka_timestamp")
     
-    # Add processing metadata
-    enriched_stream = parsed_stream \
-        .withColumn("ingestion_time", current_timestamp()) \
-        .withColumn("processing_status", lit("STREAMING")) \
+    # Ensure data conforms to bronze schema
+    bronze_stream = parsed_stream \
         .withColumn("event_time", to_timestamp(col("event_time"))) \
-        .withColumn("raw_payload", 
-            to_json(struct([col(c) for c in parsed_stream.columns])))
+        .withColumn("ingestion_time", when(col("ingestion_time").isNull(), current_timestamp())
+                    .otherwise(to_timestamp(col("ingestion_time")))) \
+        .withColumn("Date", when(col("Date").isNull(), to_date(col("event_time")))
+                    .otherwise(col("Date"))) \
+        .withColumn("processing_status", when(col("processing_status").isNull(), lit("STREAMING"))
+                    .otherwise(col("processing_status")))
     
-    # Data quality checks
-    validated_stream = enriched_stream.filter(
-        (col("quantity") > 0) & 
-        (col("unit_price") > 0) &
-        (col("product_id").isNotNull()) &
-        (col("store_id").isNotNull()) &
-        (col("event_id").isNotNull())
+    # Data validation
+    validated_stream = bronze_stream.filter(
+        col("event_id").isNotNull() &
+        col("product_id").isNotNull() &
+        col("store_id").isNotNull() &
+        col("quantity").isNotNull() &
+        col("unit_price").isNotNull()
     )
     
-    # Write to Bronze layer (micro-batch)
-    bronze_writer = validated_stream \
+    # Select fields in the same order as bronze_sales_events schema
+    final_stream = validated_stream.select(
+        "event_id", "event_time", "ingestion_time", "product_id", "store_id", 
+        "quantity", "unit_price", "customer_id", "Date", "processing_status"
+    )
+    
+    # Write to bronze layer
+    query = final_stream \
         .writeStream \
         .outputMode("append") \
         .format("iceberg") \
-        .option("path", "local.bronze.sales_events") \
-        .option("fanout-enabled", "true") \
-        .option("checkpointLocation", "s3a://bakery-warehouse/checkpoints/pos-bronze") \
-        .trigger(processingTime='30 seconds')
-    
-    # Real-time aggregations for monitoring
-    sales_aggregates = validated_stream \
-        .withWatermark("event_time", "10 minutes") \
-        .groupBy(
-            window(col("event_time"), "5 minutes"),
-            col("store_id"),
-            col("product_id")
-        ) \
-        .agg(
-            sum("quantity").alias("total_quantity"),
-            sum("total_price").alias("total_revenue"),
-            count("event_id").alias("transaction_count"),
-            avg("unit_price").alias("avg_price")
-        )
-    
-    # Write aggregates for real-time dashboard
-    dashboard_writer = sales_aggregates \
-        .writeStream \
-        .outputMode("update") \
-        .format("iceberg") \
-        .option("path", "local.bronze.sales_aggregates_realtime") \
-        .option("checkpointLocation", "s3a://bakery-warehouse/checkpoints/pos-aggregates") \
-        .trigger(processingTime='10 seconds')
-    
-    # Start streams
-    bronze_query = bronze_writer.start()
-    dashboard_query = dashboard_writer.start()
-    
-    # Alert on anomalies
-    anomaly_stream = validated_stream.filter(
-        (col("total_price") > 500) |  # High value transaction
-        (col("quantity") > 50) |       # Large quantity
-        (col("discount_applied") > 50) # High discount
-    )
-    
-    def send_alert(df, epoch_id):
-        """Send alerts for anomalous transactions"""
-        if df.count() > 0:
-            alerts = df.collect()
-            for alert in alerts:
-                print(f"ALERT: Anomalous transaction detected - "
-                      f"Event: {alert.event_id}, "
-                      f"Store: {alert.store_id}, "
-                      f"Total: ${alert.total_price}")
-                # In production, send to monitoring system
-    
-    anomaly_query = anomaly_stream \
-        .writeStream \
-        .outputMode("append") \
-        .foreachBatch(send_alert) \
-        .trigger(processingTime='1 minute') \
+        .option("path", "local.db.bronze_sales_events") \
+        .option("checkpointLocation", "s3a://bakery-warehouse/checkpoints/bronze_sales_events") \
+        .trigger(processingTime='30 seconds') \
         .start()
     
-    # Wait for termination
-    spark.streams.awaitAnyTermination()
+    query.awaitTermination()
 
 if __name__ == "__main__":
     process_pos_stream()

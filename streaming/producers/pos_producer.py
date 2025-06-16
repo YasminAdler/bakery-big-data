@@ -6,16 +6,38 @@ from kafka import KafkaProducer
 from faker import Faker
 import os
 import numpy as np
+import sys
 
 fake = Faker()
 
 class POSProducer:
     def __init__(self):
-        self.producer = KafkaProducer(
-            bootstrap_servers=os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092'),
-            value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8'),
-            key_serializer=lambda v: json.dumps(v).encode('utf-8')
-        )
+        # self.producer = KafkaProducer(
+        #     bootstrap_servers=os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092'),
+        #     value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8'),
+        #     key_serializer=lambda v: json.dumps(v).encode('utf-8')
+            
+        # )
+        
+
+        retries = 0
+        max_retries = 10
+        while retries < max_retries:
+            try:
+                self.producer = KafkaProducer(
+                    bootstrap_servers=os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092'),
+                    value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8'),
+                    key_serializer=lambda v: json.dumps(v).encode('utf-8')
+                )
+                print("Successfully connected to Kafka")
+                break
+            except Exception as e:
+                retries += 1
+                print(f"Failed to connect to Kafka (attempt {retries}/{max_retries}): {e}")
+                if retries >= max_retries:
+                    print("Maximum retries reached. Exiting.")
+                    sys.exit(1)
+                time.sleep(10)  
         
         # Enhanced product data matching your schema
         self.products = [

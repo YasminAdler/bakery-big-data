@@ -18,15 +18,14 @@ docker network create bakery-network
 ### To start everything:
 make start
 
+### To start the producers: 
+make start-producers
 
 ### To initialize the topics and tables after starting:
 make init
 
 ### To shut everything down completely:
 make down
-
-
-
 
 ## Overview
 This project implements a comprehensive data engineering solution for a bakery business, featuring real-time streaming, batch processing, data quality management, and machine learning feature engineering.

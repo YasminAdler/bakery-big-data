@@ -10,3 +10,5 @@ testing_shit.py
 *.log
 nltk_data/
 */.venv
+*/.env
+*/dockerignore
