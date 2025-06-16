@@ -89,3 +89,4 @@ MinIO Console: http://localhost:9001
 username: minioadmin
 password: minioadmin
 
+Spark Master: http://localhost:8082

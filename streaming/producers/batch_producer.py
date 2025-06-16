@@ -7,7 +7,7 @@ import os
 import requests
 
 class BatchDataProducer:
-    def __init__(self):
+    def __init__(self):  # Fixed double asterisks
         self.producer = KafkaProducer(
             bootstrap_servers=os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092'),
             value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8')
