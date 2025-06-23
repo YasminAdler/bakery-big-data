@@ -10,7 +10,7 @@ COMPOSE_FILES = \
     -f orchestration/docker-compose.yml
 
 # Docker command - use 'docker compose' for v2, 'docker-compose' for v1
-DOCKER_COMPOSE = DOCKER_BUILDKIT=0 docker compose
+DOCKER_COMPOSE = docker compose
 # Define producer services
 PRODUCERS = pos-producer iot-producer inventory-producer feedback-producer batch-producer
 
@@ -57,7 +57,7 @@ start:
 	@echo "  - Spark Master: http://localhost:8082"
 	@echo ""
 	@echo "Producers running:"
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) ps $(PRODUCERS) | grep -E "pos-producer|iot-producer|inventory-producer|feedback-producer|batch-producer" || echo "No producers running yet"
+	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) ps $(PRODUCERS)
 
 # Stop running services
 stop:
