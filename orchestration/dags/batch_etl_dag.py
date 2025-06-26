@@ -3,6 +3,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from airflow.operators.bash import BashOperator
+from airflow.sensors.external_task import ExternalTaskSensor
 from airflow.utils.task_group import TaskGroup
 
 default_args = {
@@ -28,6 +29,55 @@ dag = DAG(
 def check_data_quality(**context):
     # Implementation for data quality checks
     pass
+
+# Check if Iceberg tables exist
+def check_tables_exist(**context):
+    """Check if all required Iceberg tables exist before running ETL"""
+    from pyspark.sql import SparkSession
+    
+    spark = SparkSession.builder \
+        .appName("CheckTablesExist") \
+        .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \
+        .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog") \
+        .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog") \
+        .config("spark.sql.catalog.local.type", "hadoop") \
+        .config("spark.sql.catalog.local.warehouse", "s3a://bakery-warehouse/iceberg") \
+        .getOrCreate()
+    
+    required_tables = [
+        "local.db.bronze_sales_events",
+        "local.db.bronze_inventory_updates", 
+        "local.db.bronze_customer_feedback",
+        "local.db.bronze_equipment_metrics",
+        "local.db.silver_sales",
+        "local.db.silver_inventory",
+        "local.db.silver_customer_feedback",
+        "local.db.silver_equipment_metrics"
+    ]
+    
+    missing_tables = []
+    for table in required_tables:
+        try:
+            spark.sql(f"DESCRIBE {table}").count()
+            print(f"✓ {table} exists")
+        except Exception as e:
+            missing_tables.append(table)
+            print(f"✗ {table} missing: {str(e)}")
+    
+    spark.stop()
+    
+    if missing_tables:
+        raise ValueError(f"Missing required tables: {missing_tables}. Please run the 'create_iceberg_tables' DAG first.")
+    
+    print("✅ All required tables exist!")
+    return True
+
+# Check that all required tables exist before starting ETL
+check_iceberg_tables = PythonOperator(
+    task_id='check_iceberg_tables_exist',
+    python_callable=check_tables_exist,
+    dag=dag
+)
 
 # Task Groups for Bronze to Silver ETL
 with TaskGroup("bronze_to_silver", dag=dag) as bronze_to_silver:
@@ -116,4 +166,4 @@ generate_quality_report = PythonOperator(
 )
 
 # Define dependencies
-bronze_to_silver >> silver_to_gold >> handle_late_arrivals >> generate_quality_report
+check_iceberg_tables >> bronze_to_silver >> silver_to_gold >> handle_late_arrivals >> generate_quality_report
