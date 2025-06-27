@@ -37,6 +37,7 @@ help:
 	@echo "  airflow-ui        Open Airflow UI in browser (http://localhost:8080)."
 	@echo "  kafka-ui          Open Kafka UI in browser (http://localhost:8081)."
 	@echo "  clean-logs        Clean up Airflow logs directory."
+	@echo "  check-buckets     List MinIO buckets."
 	@echo ""
 	@echo "Producer Commands:"
 	@echo "  start-producers   Start all data producers."
@@ -74,8 +75,10 @@ down:
 # Initialize the environment after services are started
 init:
 	@echo "[INIT] Initializing the system..."
+	@echo "=> Creating MinIO buckets..."
+	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) up -d create-buckets || echo "Bucket creation service may have already run"
 	@echo "=> Waiting 15 seconds for Kafka to be fully ready..."
-	@timeout 15
+	@sleep 15
 	@echo "=> Creating Kafka topics..."
 	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T kafka kafka-topics --create --topic bakery-pos-events --bootstrap-server kafka:9092 --partitions 3 --replication-factor 1 --if-not-exists || echo "Topic bakery-pos-events already exists"
 	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T kafka kafka-topics --create --topic bakery-iot-events --bootstrap-server kafka:9092 --partitions 2 --replication-factor 1 --if-not-exists || echo "Topic bakery-iot-events already exists"
@@ -86,6 +89,7 @@ init:
 	@echo "[SUCCESS] All Kafka topics created."
 	@echo "=> Listing Kafka topics:"
 	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T kafka kafka-topics --list --bootstrap-server kafka:9092
+	@echo "=> MinIO buckets and Kafka topics are ready!"
 	@echo "=> Note: Iceberg table creation is handled by the initial run of the Airflow DAGs."
 
 # Follow logs from all services
@@ -165,3 +169,8 @@ build-producers:
 	@echo "[BUILD] Building producer images..."
 	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) build $(PRODUCERS)
 	@echo "[SUCCESS] Producer images built."
+
+# Check MinIO buckets
+check-buckets:
+	@echo "[MINIO] Checking MinIO buckets..."
+	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T minio sh -c "mc alias set myminio http://localhost:9000 minioadmin minioadmin && mc ls myminio/" || echo "MinIO not ready or buckets not created yet"

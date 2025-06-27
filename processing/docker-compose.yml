@@ -79,12 +79,14 @@ services:
       - minio
     entrypoint: >
       /bin/sh -c "
-      sleep 5;
+      sleep 10;
       mc alias set myminio http://minio:9000 minioadmin minioadmin;
-      mc mb myminio/bakery-warehouse;
-      mc mb myminio/bakery-warehouse/bronze;
-      mc mb myminio/bakery-warehouse/silver;
-      mc mb myminio/bakery-warehouse/gold;
+      mc mb myminio/bronze || true;
+      mc mb myminio/silver || true;
+      mc mb myminio/gold || true;
+      mc mb myminio/warehouse || true;
+      echo 'Buckets created successfully';
+      mc ls myminio/;
       exit 0;
       "
     networks:
