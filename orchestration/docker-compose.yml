@@ -28,9 +28,9 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
     volumes:
-      - airflow-dags:/opt/airflow/dags
-      - airflow-logs:/opt/airflow/logs   # Changed from bind mount
-      - airflow-plugins:/opt/airflow/plugins   # Changed from bind mount
+      - ./dags:/opt/airflow/dags
+      - airflow-logs:/opt/airflow/logs
+      - airflow-plugins:/opt/airflow/plugins
     ports:
       - "8080:8080"
     networks:
@@ -49,9 +49,9 @@ services:
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
     volumes:
-      - airflow-dags:/opt/airflow/dags   # Changed from bind mount
-      - airflow-logs:/opt/airflow/logs   # Changed from bind mount
-      - airflow-plugins:/opt/airflow/plugins   # Changed from bind mount
+      - ./dags:/opt/airflow/dags
+      - airflow-logs:/opt/airflow/logs
+      - airflow-plugins:/opt/airflow/plugins
     networks:
       - bakery-network
   airflow-worker:
@@ -68,9 +68,9 @@ services:
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
     volumes:
-      - airflow-dags:/opt/airflow/dags   # Changed from bind mount
-      - airflow-logs:/opt/airflow/logs   # Changed from bind mount
-      - airflow-plugins:/opt/airflow/plugins   # Changed from bind mount
+      - ./dags:/opt/airflow/dags
+      - airflow-logs:/opt/airflow/logs
+      - airflow-plugins:/opt/airflow/plugins
     networks:
       - bakery-network
   airflow-init:
@@ -96,9 +96,8 @@ services:
       - bakery-network
 volumes:
   postgres-db-volume:
-  airflow-dags:
-  airflow-logs:    # New named volume for logs
-  airflow-plugins: # New named volume for plugins
+  airflow-logs:
+  airflow-plugins:
 networks:
   bakery-network:
     external: true
