@@ -10,7 +10,7 @@ COMPOSE_FILES = \
     -f orchestration/docker-compose.yml
 
 # Docker command - use 'docker compose' for v2, 'docker-compose' for v1
-DOCKER_COMPOSE = docker compose
+DOCKER_COMPOSE = docker-compose
 # Define producer services
 PRODUCERS = pos-producer iot-producer inventory-producer feedback-producer batch-producer
 
