@@ -15,7 +15,11 @@ services:
       - bakery-network
   airflow-webserver:
     image: apache/airflow:2.7.0
-    command: webserver
+    command: >
+      bash -c "
+      pip install apache-airflow-providers-apache-spark==4.1.5 &&
+      airflow webserver
+      "
     depends_on:
       - airflow-init
     environment:
@@ -27,8 +31,11 @@ services:
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+      - AIRFLOW__WEBSERVER__SECRET_KEY=your-secret-key-here
+      - AIRFLOW__WEBSERVER__WTF_CSRF_ENABLED=true
+      - AIRFLOW__WEBSERVER__WTF_CSRF_TIME_LIMIT=3600
     volumes:
-      - ./dags:/opt/airflow/dags
+      - ./orchestration/dags:/opt/airflow/dags
       - airflow-logs:/opt/airflow/logs
       - airflow-plugins:/opt/airflow/plugins
     ports:
@@ -37,7 +44,11 @@ services:
       - bakery-network
   airflow-scheduler:
     image: apache/airflow:2.7.0
-    command: scheduler
+    command: >
+      bash -c "
+      pip install apache-airflow-providers-apache-spark==4.1.5 &&
+      airflow scheduler
+      "
     depends_on:
       - airflow-init
     environment:
@@ -49,14 +60,18 @@ services:
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
     volumes:
-      - ./dags:/opt/airflow/dags
+      - ./orchestration/dags:/opt/airflow/dags
       - airflow-logs:/opt/airflow/logs
       - airflow-plugins:/opt/airflow/plugins
     networks:
       - bakery-network
   airflow-worker:
     image: apache/airflow:2.7.0
-    command: celery worker
+    command: >
+      bash -c "
+      pip install apache-airflow-providers-apache-spark==4.1.5 &&
+      airflow celery worker
+      "
     depends_on:
       - airflow-init
     environment:
@@ -68,7 +83,7 @@ services:
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
     volumes:
-      - ./dags:/opt/airflow/dags
+      - ./orchestration/dags:/opt/airflow/dags
       - airflow-logs:/opt/airflow/logs
       - airflow-plugins:/opt/airflow/plugins
     networks:

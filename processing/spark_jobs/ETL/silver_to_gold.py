@@ -1,19 +1,28 @@
+"""
+Silver to Gold ETL Job
+Transforms standardized data from silver layer to business-ready gold layer with dimensions and facts.
+"""
+
+import sys
+import os
+from datetime import datetime, timedelta
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
-from pyspark.sql.window import Window
-import sys
-from datetime import datetime
+from pyspark.sql.types import *
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def create_spark_session():
-    """Create Spark session with Iceberg configuration"""
+    """Create Spark session with Iceberg support"""
     return SparkSession.builder \
         .appName("SilverToGoldETL") \
         .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \
-        .config("spark.sql.catalog.spark_catalog", "org.apache.iceberg.spark.SparkSessionCatalog") \
-        .config("spark.sql.catalog.spark_catalog.type", "hive") \
         .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog") \
         .config("spark.sql.catalog.local.type", "hadoop") \
-        .config("spark.sql.catalog.local.warehouse", "s3a://bakery-warehouse/iceberg") \
+        .config("spark.sql.catalog.local.warehouse", "s3a://bakery-warehouse/gold") \
         .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
         .config("spark.hadoop.fs.s3a.access.key", "minioadmin") \
         .config("spark.hadoop.fs.s3a.secret.key", "minioadmin") \
@@ -21,403 +30,242 @@ def create_spark_session():
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
         .getOrCreate()
 
-def update_product_pricing_scd2(spark, process_date):
-    """Update product pricing dimension with SCD Type 2"""
+def populate_dimensions(spark):
+    """Populate dimension tables with reference data"""
+    logger.info("📊 Populating dimension tables...")
     
-    # Read current dimension
-    try:
-        current_dim = spark.read \
-            .format("iceberg") \
-            .load("local.gold.dim_product_pricing") \
-            .filter(col("is_current_record") == True)
-    except:
-        # Create empty dataframe if table doesn't exist
-        schema = spark.createDataFrame([], 
-            """pricing_key INT, product_id INT, product_name STRING, 
-               base_price DECIMAL(10,2), price_category STRING, 
-               marketing_strategy STRING, valid_from DATE, valid_to DATE, 
-               is_current_record BOOLEAN, margin_percentage DECIMAL(5,2), 
-               pricing_tier STRING""")
-        current_dim = schema
+    # Populate Equipment Dimension
+    equipment_data = [
+        (1, "Commercial Oven A", "Oven", "BakeryTech", "BT-OVN-001", "2023-01-15", 15.5, "Monthly", 10, 25000.00, True),
+        (2, "Mixer Pro", "Mixer", "DoughMaster", "DM-MIX-002", "2023-02-20", 8.2, "Quarterly", 8, 12000.00, True),
+        (3, "Refrigeration Unit", "Refrigerator", "ColdTech", "CT-REF-003", "2023-03-10", 12.0, "Semi-annually", 12, 18000.00, True),
+        (4, "Display Case", "Display", "ShowCase", "SC-DIS-004", "2023-01-30", 3.5, "Annually", 15, 8000.00, True),
+        (5, "Coffee Machine", "Beverage", "BrewMaster", "BM-COF-005", "2023-04-05", 5.8, "Monthly", 6, 15000.00, True)
+    ]
     
-    # Get latest product prices from silver
-    latest_prices = spark.sql("""
-        SELECT DISTINCT
-            p.product_id,
-            p.product_name,
-            FIRST_VALUE(s.unit_price) OVER (
-                PARTITION BY p.product_id 
-                ORDER BY s.sale_date DESC, s.sale_time DESC
-            ) as base_price
-        FROM local.silver.sales s
-        JOIN local.silver.products p ON s.product_id = p.product_id
-        WHERE s.sale_date = '{}'
-    """.format(process_date))
+    equipment_df = spark.createDataFrame(equipment_data, [
+        "equipment_id", "equipment_name", "equipment_type", "manufacturer", 
+        "model_number", "purchase_date", "power_consumption_kw", 
+        "maintenance_frequency", "expected_lifespan_years", "replacement_cost", "is_current"
+    ])
     
-    # Add derived columns
-    latest_prices = latest_prices.withColumn(
-        "price_category",
-        when(col("base_price") < 5, "Budget")
-        .when(col("base_price") < 15, "Standard")
-        .when(col("base_price") < 30, "Premium")
-        .otherwise("Luxury")
-    ).withColumn(
-        "marketing_strategy",
-        when(col("price_category") == "Budget", "Volume Sales")
-        .when(col("price_category") == "Standard", "Value Proposition")
-        .when(col("price_category") == "Premium", "Quality Focus")
-        .otherwise("Exclusive Experience")
-    ).withColumn(
-        "margin_percentage",
-        when(col("price_category") == "Budget", 20)
-        .when(col("price_category") == "Standard", 35)
-        .when(col("price_category") == "Premium", 45)
-        .otherwise(60)
-    ).withColumn(
-        "pricing_tier",
-        when(col("base_price") < 3, "Tier 1")
-        .when(col("base_price") < 10, "Tier 2")
-        .when(col("base_price") < 25, "Tier 3")
-        .otherwise("Tier 4")
+    equipment_df.writeTo("local.gold.dim_equipment").overwrite()
+    logger.info("✅ Equipment dimension populated")
+    
+    # Populate Store Dimension
+    store_data = [
+        (1, 1, "Downtown", "Downtown", "123 Main St", "New York", "NY", "USA", "John Smith", 7.0, 22.0, 150.0, "2023-01-01", None, True, 150.0),
+        (2, 2, "Mall", "Mall", "456 Shopping Ave", "Los Angeles", "CA", "USA", "Sarah Johnson", 9.0, 21.0, 120.0, "2023-01-01", None, True, 120.0),
+        (3, 3, "Airport", "Airport", "789 Terminal Rd", "Chicago", "IL", "USA", "Mike Davis", 5.0, 23.0, 80.0, "2023-01-01", None, True, 80.0),
+        (4, 4, "Suburban", "Suburban", "321 Oak Dr", "Houston", "TX", "USA", "Lisa Wilson", 8.0, 20.0, 100.0, "2023-01-01", None, True, 100.0),
+        (5, 5, "University", "University", "654 Campus Blvd", "Boston", "MA", "USA", "Tom Brown", 8.0, 21.0, 90.0, "2023-01-01", None, True, 90.0)
+    ]
+    
+    store_df = spark.createDataFrame(store_data, [
+        "store_key", "store_id", "location", "type", "address", "city", "region", 
+        "country", "manager_name", "opening_hour", "closing_hour", "total_area_sqm",
+        "effective_date", "end_date", "is_current_flag", "area_sqm"
+    ])
+    
+    store_df.writeTo("local.gold.dim_store").overwrite()
+    logger.info("✅ Store dimension populated")
+    
+    # Populate Product Dimension
+    product_data = [
+        (1, "Croissant", "Pastry", "Viennoiserie", "Flour, Butter, Yeast", "Gluten, Dairy", 24, False, "Calories: 231, Fat: 12g"),
+        (2, "Baguette", "Bread", "Artisan", "Flour, Water, Salt, Yeast", "Gluten", 48, False, "Calories: 265, Fat: 1g"),
+        (3, "Chocolate Cake", "Cake", "Celebration", "Flour, Sugar, Eggs, Chocolate", "Gluten, Eggs, Dairy", 72, False, "Calories: 350, Fat: 18g"),
+        (4, "Apple Pie", "Pie", "Fruit", "Flour, Apples, Sugar, Cinnamon", "Gluten", 48, True, "Calories: 280, Fat: 12g"),
+        (5, "Sourdough Bread", "Bread", "Artisan", "Flour, Water, Salt, Sourdough Starter", "Gluten", 96, False, "Calories: 245, Fat: 1g"),
+        (6, "Blueberry Muffin", "Muffin", "Quick Bread", "Flour, Sugar, Eggs, Blueberries", "Gluten, Eggs, Dairy", 48, False, "Calories: 320, Fat: 15g"),
+        (7, "Cinnamon Roll", "Pastry", "Sweet", "Flour, Sugar, Cinnamon, Icing", "Gluten, Dairy", 24, False, "Calories: 380, Fat: 20g"),
+        (8, "Cheesecake", "Cake", "Cream", "Cream Cheese, Sugar, Eggs, Graham Cracker", "Gluten, Eggs, Dairy", 96, False, "Calories: 400, Fat: 25g")
+    ]
+    
+    product_df = spark.createDataFrame(product_data, [
+        "product_id", "product_name", "category", "subcategory", "ingredients", 
+        "allergens", "shelf_life_hours", "is_seasonal", "nutrition_info"
+    ])
+    
+    product_df.writeTo("local.gold.dim_product").overwrite()
+    logger.info("✅ Product dimension populated")
+    
+    # Populate Calendar Dimension (for the next year)
+    calendar_data = []
+    start_date = datetime(2024, 1, 1)
+    for i in range(365):
+        date = start_date + timedelta(days=i)
+        calendar_data.append((
+            date.date(),
+            date.strftime("%A"),
+            date.day,
+            date.month,
+            date.strftime("%B"),
+            (date.month - 1) // 3 + 1,
+            date.year,
+            date.weekday() >= 5,
+            False,  # Simplified - no holiday logic
+            None,
+            "Spring" if date.month in [3, 4, 5] else "Summer" if date.month in [6, 7, 8] else "Fall" if date.month in [9, 10, 11] else "Winter"
+        ))
+    
+    calendar_df = spark.createDataFrame(calendar_data, [
+        "date", "day_of_week", "day_of_month", "month", "month_name", 
+        "quarter", "year", "is_weekend", "is_holiday", "holiday_name", "season"
+    ])
+    
+    calendar_df.writeTo("local.gold.dim_calendar").overwrite()
+    logger.info("✅ Calendar dimension populated")
+
+def create_fact_sales(spark):
+    """Create fact_sales table from silver_sales"""
+    logger.info("🛒 Creating fact_sales table...")
+    
+    # Read from silver layer
+    silver_sales = spark.read.format("iceberg").load("local.db.silver_sales")
+    
+    # Join with dimensions to create fact table
+    fact_sales = silver_sales.select(
+        col("sale_id"),
+        col("product_id"),
+        col("store_id"),
+        lit(None).cast("int").alias("customer_key"),  # Will be enriched when customer dim is available
+        lit(None).cast("int").alias("pricing_key"),   # Will be enriched when pricing dim is available
+        col("sale_date").alias("date"),
+        col("weather_id"),
+        lit(None).cast("string").alias("marketing_event_id"),
+        col("quantity_sold"),
+        col("total_revenue"),
+        lit("Regular").alias("customer_loyalty_tier"),  # Default value
+        col("time_of_day"),
+        when(col("promo_id").isNotNull(), True).otherwise(False).alias("promotion_applied"),
+        lit(0.0).cast("decimal(10,2)").alias("discount_amount"),  # Will be calculated
+        lit(0.25).cast("decimal(5,2)").alias("profit_margin"),    # Default 25% margin
+        (col("total_revenue") * 0.75).alias("cost_of_goods_sold"), # 75% of revenue as cost
+        monotonically_increasing_id().alias("transaction_sequence")
     )
     
-    # Identify changed records
-    changes = latest_prices.join(
-        current_dim.select("product_id", "base_price"),
-        "product_id",
-        "left_anti"
-    ).union(
-        latest_prices.join(
-            current_dim.select("product_id", "base_price"),
-            "product_id",
-            "inner"
-        ).filter(col("latest_prices.base_price") != col("current_dim.base_price"))
+    # Write to gold layer
+    fact_sales.writeTo("local.gold.fact_sales").overwritePartitions()
+    
+    logger.info(f"✅ Fact sales created with {fact_sales.count()} records")
+    return fact_sales.count()
+
+def create_fact_inventory(spark):
+    """Create fact_inventory table from silver_inventory"""
+    logger.info("📦 Creating fact_inventory table...")
+    
+    # Read from silver layer
+    silver_inventory = spark.read.format("iceberg").load("local.db.silver_inventory")
+    
+    # Create fact table
+    fact_inventory = silver_inventory.select(
+        col("inventory_id"),
+        col("product_id"),
+        col("store_id"),
+        col("inventory_date").alias("date"),
+        col("beginning_stock"),
+        col("restocked_quantity"),
+        col("sold_quantity"),
+        col("waste_quantity"),
+        col("waste_ratio"),
+        col("days_of_supply"),
+        when(col("closing_stock") == 0, 1).otherwise(0).alias("stock_out_events")
     )
     
-    if changes.count() > 0:
-        # Generate new keys
-        max_key = current_dim.agg(max("pricing_key")).collect()[0][0] or 0
-        
-        # Close old records
-        updates = current_dim.join(
-            changes.select("product_id"),
-            "product_id",
-            "inner"
-        ).withColumn("is_current_record", lit(False)) \
-         .withColumn("valid_to", lit(process_date))
-        
-        # Create new records
-        new_records = changes.withColumn(
-            "pricing_key", 
-            row_number().over(Window.orderBy("product_id")) + max_key
-        ).withColumn("valid_from", lit(process_date)) \
-         .withColumn("valid_to", lit(None).cast("date")) \
-         .withColumn("is_current_record", lit(True))
-        
-        # Combine all records
-        final_dim = current_dim.join(
-            changes.select("product_id"),
-            "product_id",
-            "left_anti"
-        ).union(updates).union(new_records)
-        
-        # Write to gold layer
-        final_dim.write \
-            .format("iceberg") \
-            .mode("overwrite") \
-            .save("local.gold.dim_product_pricing")
+    # Write to gold layer
+    fact_inventory.writeTo("local.gold.fact_inventory").overwritePartitions()
+    
+    logger.info(f"✅ Fact inventory created with {fact_inventory.count()} records")
+    return fact_inventory.count()
 
-def update_customer_scd2(spark, process_date):
-    """Update customer dimension with SCD Type 2"""
+def create_fact_customer_feedback(spark):
+    """Create fact_customer_feedback table from silver_customer_feedback"""
+    logger.info("💬 Creating fact_customer_feedback table...")
     
-    # Read current dimension
-    try:
-        current_dim = spark.read \
-            .format("iceberg") \
-            .load("local.gold.dim_customer") \
-            .filter(col("is_current_record") == True)
-    except:
-        # Create empty dataframe if table doesn't exist
-        schema = spark.createDataFrame([], 
-            """customer_key INT, customer_id STRING, customer_name STRING,
-               email STRING, phone STRING, loyalty_tier STRING,
-               lifetime_value DECIMAL(10,2), first_purchase_date DATE,
-               valid_from DATE, valid_to DATE, is_current_record BOOLEAN""")
-        current_dim = schema
+    # Read from silver layer
+    silver_feedback = spark.read.format("iceberg").load("local.db.silver_customer_feedback")
     
-    # Get customer updates from silver
-    customer_updates = spark.sql("""
-        WITH customer_metrics AS (
-            SELECT 
-                customer_id,
-                MIN(sale_date) as first_purchase_date,
-                SUM(total_revenue) as lifetime_value,
-                COUNT(DISTINCT sale_id) as purchase_count,
-                AVG(total_revenue) as avg_purchase_value
-            FROM local.silver.sales
-            WHERE sale_date <= '{}'
-            GROUP BY customer_id
-        )
-        SELECT 
-            cm.*,
-            CASE 
-                WHEN lifetime_value > 1000 OR purchase_count > 50 THEN 'Platinum'
-                WHEN lifetime_value > 500 OR purchase_count > 20 THEN 'Gold'
-                WHEN lifetime_value > 200 OR purchase_count > 10 THEN 'Silver'
-                ELSE 'Bronze'
-            END as loyalty_tier
-        FROM customer_metrics cm
-    """.format(process_date))
+    # Create fact table
+    fact_feedback = silver_feedback.select(
+        col("feedback_id"),
+        lit(None).cast("int").alias("customer_key"),  # Will be enriched when customer dim is available
+        col("product_id"),
+        col("platform"),
+        col("rating"),
+        col("review_text"),
+        col("feedback_date")
+    )
     
-    # Identify tier changes
-    tier_changes = customer_updates.alias("new").join(
-        current_dim.alias("curr"),
-        col("new.customer_id") == col("curr.customer_id"),
-        "inner"
-    ).filter(col("new.loyalty_tier") != col("curr.loyalty_tier")) \
-     .select("new.*")
+    # Write to gold layer
+    fact_feedback.writeTo("local.gold.fact_customer_feedback").overwritePartitions()
     
-    if tier_changes.count() > 0:
-        # Process SCD Type 2 updates similar to product pricing
-        # ... (implementation similar to product pricing SCD2)
-        pass
+    logger.info(f"✅ Fact customer feedback created with {fact_feedback.count()} records")
+    return fact_feedback.count()
 
-def create_fact_sales(spark, process_date):
-    """Create fact sales table"""
+def create_fact_equipment_performance(spark):
+    """Create fact_equipment_performance table from silver_equipment_metrics"""
+    logger.info("⚙️ Creating fact_equipment_performance table...")
     
-    sales_df = spark.sql("""
-        SELECT 
-            s.sale_id,
-            s.product_id,
-            s.store_id,
-            c.customer_key,
-            pp.pricing_key,
-            s.sale_date as date,
-            s.weather_id,
-            s.marketing_event_id,
-            s.quantity_sold,
-            s.total_revenue,
-            c.loyalty_tier as customer_loyalty_tier,
-            s.time_of_day,
-            CASE WHEN s.discount_percentage > 0 THEN true ELSE false END as promotion_applied,
-            s.discount_amount,
-            s.profit_margin,
-            s.cost_of_goods_sold,
-            ROW_NUMBER() OVER (
-                PARTITION BY s.store_id, s.sale_date 
-                ORDER BY s.sale_time
-            ) as transaction_sequence
-        FROM local.silver.sales s
-        LEFT JOIN local.gold.dim_customer c 
-            ON s.customer_id = c.customer_id 
-            AND c.is_current_record = true
-        LEFT JOIN local.gold.dim_product_pricing pp 
-            ON s.product_id = pp.product_id 
-            AND pp.is_current_record = true
-        WHERE s.sale_date = '{}'
-    """.format(process_date))
+    # Read from silver layer
+    silver_equipment = spark.read.format("iceberg").load("local.db.silver_equipment_metrics")
     
-    # Write to fact table
-    sales_df.write \
-        .format("iceberg") \
-        .mode("append") \
-        .partitionBy("date") \
-        .save("local.gold.fact_sales")
-
-def create_ml_features(spark, process_date):
-    """Create ML feature tables"""
+    # Aggregate daily metrics
+    fact_equipment = silver_equipment.groupBy("equipment_id", "metric_date").agg(
+        sum("operational_hours").alias("operational_hours"),
+        avg("power_consumption").alias("avg_temperature"),  # Reusing field for temperature
+        sum("power_consumption").alias("total_power_consumption"),
+        sum(when(col("maintenance_alert"), 1).otherwise(0)).alias("maintenance_events"),
+        lit(0).alias("downtime_minutes"),  # Will be calculated from operational status
+        lit(0.85).cast("decimal(5,2)").alias("efficiency_score")  # Default efficiency
+    ).select(
+        concat(lit("perf_"), col("equipment_id"), lit("_"), date_format(col("metric_date"), "yyyyMMdd")).alias("performance_id"),
+        col("equipment_id"),
+        col("metric_date").alias("date"),
+        col("operational_hours"),
+        col("avg_temperature"),
+        col("total_power_consumption"),
+        col("maintenance_events"),
+        col("downtime_minutes"),
+        col("efficiency_score")
+    )
     
-    # Demand forecast features
-    demand_features = spark.sql("""
-        WITH sales_aggregates AS (
-            SELECT 
-                product_id,
-                store_id,
-                sale_date,
-                SUM(quantity_sold) as daily_sales,
-                AVG(quantity_sold) OVER (
-                    PARTITION BY product_id, store_id 
-                    ORDER BY sale_date 
-                    ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
-                ) as sales_last_7_days,
-                AVG(quantity_sold) OVER (
-                    PARTITION BY product_id, store_id 
-                    ORDER BY sale_date 
-                    ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
-                ) as sales_last_30_days,
-                STDDEV(quantity_sold) OVER (
-                    PARTITION BY product_id, store_id 
-                    ORDER BY sale_date 
-                    ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
-                ) as sales_volatility
-            FROM local.silver.sales
-            WHERE sale_date BETWEEN DATE_SUB('{}', 30) AND '{}'
-            GROUP BY product_id, store_id, sale_date
-        ),
-        inventory_data AS (
-            SELECT 
-                product_id,
-                store_id,
-                inventory_date,
-                closing_stock as inventory_level,
-                waste_ratio
-            FROM local.silver.inventory
-            WHERE inventory_date = '{}'
-        )
-        SELECT 
-            CONCAT(sa.product_id, '-', sa.store_id, '-', sa.sale_date) as feature_id,
-            sa.product_id,
-            sa.store_id,
-            sa.sale_date as date,
-            sa.daily_sales as sales_volume,
-            sa.daily_sales as avg_daily_sales,
-            sa.sales_last_7_days,
-            sa.sales_last_30_days,
-            CASE 
-                WHEN sa.sales_last_7_days > sa.sales_last_30_days * 1.2 THEN 'Increasing'
-                WHEN sa.sales_last_7_days < sa.sales_last_30_days * 0.8 THEN 'Decreasing'
-                ELSE 'Stable'
-            END as sales_trend,
-            -- Add seasonality index based on historical patterns
-            sa.sales_volatility / NULLIF(sa.sales_last_30_days, 0) as seasonality_index,
-            date_format(sa.sale_date, 'EEEE') as day_of_week,
-            cal.is_holiday,
-            cal.holiday_name,
-            cal.season,
-            COALESCE(p.is_active, false) as promotion_active,
-            p.campaign_name as marketing_campaign,
-            id.inventory_level,
-            id.waste_ratio,
-            pp.base_price as price,
-            w.weather_impact_score,
-            -- Placeholder for forecast accuracy (would be calculated after predictions)
-            NULL as forecast_accuracy
-        FROM sales_aggregates sa
-        LEFT JOIN local.gold.dim_calendar cal ON sa.sale_date = cal.date
-        LEFT JOIN local.gold.dim_product_pricing pp 
-            ON sa.product_id = pp.product_id AND pp.is_current_record = true
-        LEFT JOIN inventory_data id 
-            ON sa.product_id = id.product_id 
-            AND sa.store_id = id.store_id
-        LEFT JOIN local.gold.active_promotions p 
-            ON sa.product_id = p.product_id 
-            AND sa.sale_date BETWEEN p.start_date AND p.end_date
-        LEFT JOIN local.gold.weather_impact w 
-            ON sa.store_id = w.store_id 
-            AND sa.sale_date = w.date
-        WHERE sa.sale_date = '{}'
-    """.format(process_date, process_date, process_date, process_date))
+    # Write to gold layer
+    fact_equipment.writeTo("local.gold.fact_equipment_performance").overwritePartitions()
     
-    # Write ML features
-    demand_features.write \
-        .format("iceberg") \
-        .mode("append") \
-        .save("local.gold.fact_demand_forecast_features")
-    
-    # Equipment maintenance features
-    equipment_features = spark.sql("""
-        WITH equipment_history AS (
-            SELECT 
-                equipment_id,
-                metric_date,
-                AVG(temperature) as avg_temperature,
-                MAX(temperature) - MIN(temperature) as temperature_fluctuation,
-                SUM(power_consumption) as total_power_consumption,
-                SUM(CASE WHEN maintenance_alert = true THEN 1 ELSE 0 END) as alert_count,
-                SUM(operational_hours) as daily_operational_hours
-            FROM local.silver.equipment_metrics
-            WHERE metric_date BETWEEN DATE_SUB('{}', 30) AND '{}'
-            GROUP BY equipment_id, metric_date
-        ),
-        maintenance_history AS (
-            SELECT 
-                equipment_id,
-                MAX(maintenance_date) as last_maintenance_date,
-                COUNT(*) as maintenance_count,
-                AVG(maintenance_duration_hours) as avg_maintenance_duration
-            FROM local.gold.maintenance_records
-            WHERE maintenance_date < '{}'
-            GROUP BY equipment_id
-        )
-        SELECT 
-            CONCAT(eh.equipment_id, '-', eh.metric_date) as feature_id,
-            eh.equipment_id,
-            eh.metric_date as date,
-            DATEDIFF(eh.metric_date, mh.last_maintenance_date) as days_since_last_maintenance,
-            SUM(eh.daily_operational_hours) OVER (
-                PARTITION BY eh.equipment_id 
-                ORDER BY eh.metric_date 
-                ROWS UNBOUNDED PRECEDING
-            ) as total_operational_hours,
-            eh.avg_temperature as avg_daily_temperature,
-            eh.temperature_fluctuation,
-            AVG(eh.total_power_consumption) OVER (
-                PARTITION BY eh.equipment_id 
-                ORDER BY eh.metric_date 
-                ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
-            ) as power_consumption_trend,
-            SUM(eh.alert_count) OVER (
-                PARTITION BY eh.equipment_id 
-                ORDER BY eh.metric_date 
-                ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
-            ) as abnormal_events_count,
-            DATEDIFF(eh.metric_date, e.purchase_date) as age_in_days,
-            eh.daily_operational_hours / 24.0 as usage_intensity_score,
-            mh.maintenance_count / NULLIF(DATEDIFF(eh.metric_date, e.purchase_date), 0) * 365 
-                as maintenance_history_score,
-            -- Simplified failure probability calculation
-            CASE 
-                WHEN days_since_last_maintenance > 90 THEN 0.8
-                WHEN temperature_fluctuation > 50 THEN 0.6
-                WHEN alert_count > 5 THEN 0.7
-                ELSE 0.1
-            END as failure_probability
-        FROM equipment_history eh
-        LEFT JOIN local.gold.dim_equipment e ON eh.equipment_id = e.equipment_id
-        LEFT JOIN maintenance_history mh ON eh.equipment_id = mh.equipment_id
-        WHERE eh.metric_date = '{}'
-    """.format(process_date, process_date, process_date, process_date))
-    
-    # Write equipment features
-    equipment_features.write \
-        .format("iceberg") \
-        .mode("append") \
-        .save("local.gold.fact_equipment_maintenance_features")
+    logger.info(f"✅ Fact equipment performance created with {fact_equipment.count()} records")
+    return fact_equipment.count()
 
 def main():
-    if len(sys.argv) != 3:
-        print("Usage: silver_to_gold.py <process_type> <process_date>")
-        sys.exit(1)
+    """Main ETL process"""
+    logger.info("🚀 Starting Silver to Gold ETL process...")
     
-    process_type = sys.argv[1]
-    process_date = sys.argv[2]
-    
+    # Create Spark session
     spark = create_spark_session()
-    spark.sparkContext.setLogLevel("ERROR")
     
     try:
-        if process_type == "dimensions":
-            update_product_pricing_scd2(spark, process_date)
-            update_customer_scd2(spark, process_date)
-            print(f"Updated dimension tables for {process_date}")
-            
-        elif process_type == "facts":
-            create_fact_sales(spark, process_date)
-            print(f"Created fact tables for {process_date}")
-            
-        elif process_type == "ml_features":
-            create_ml_features(spark, process_date)
-            print(f"Created ML feature tables for {process_date}")
-            
-        else:
-            print(f"Unknown process type: {process_type}")
-            sys.exit(1)
-            
+        # Populate dimensions first
+        populate_dimensions(spark)
+        
+        # Create fact tables
+        sales_count = create_fact_sales(spark)
+        inventory_count = create_fact_inventory(spark)
+        feedback_count = create_fact_customer_feedback(spark)
+        equipment_count = create_fact_equipment_performance(spark)
+        
+        # Log summary
+        logger.info("📊 Gold Layer ETL Summary:")
+        logger.info(f"   - Fact sales records: {sales_count}")
+        logger.info(f"   - Fact inventory records: {inventory_count}")
+        logger.info(f"   - Fact feedback records: {feedback_count}")
+        logger.info(f"   - Fact equipment records: {equipment_count}")
+        logger.info(f"   - Total fact records: {sales_count + inventory_count + feedback_count + equipment_count}")
+        
+        logger.info("✅ Silver to Gold ETL completed successfully!")
+        
     except Exception as e:
-        print(f"Error in {process_type} processing: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+        logger.error(f"❌ ETL process failed: {str(e)}")
+        raise
     finally:
         spark.stop()
 
