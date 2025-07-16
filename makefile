@@ -1,167 +1,221 @@
-# Makefile for the Bakery Data Engineering Project
-# This Makefile is designed for the multi-directory docker-compose setup.
+# Bakery Data Pipeline - Makefile
+# For best results, run from Git Bash or WSL on Windows
 
-# Define the compose files to use.
-# Docker Compose will merge these files, with later files overriding earlier ones if there are conflicts.
-COMPOSE_FILES = \
-    -f docker-compose.yml \
-    -f processing/docker-compose.yml \
-    -f streaming/docker-compose.yml \
-    -f orchestration/docker-compose.yml
+.PHONY: help start stop build clean init status logs load-bronze csv-producer
 
-# Docker command - use 'docker compose' for v2, 'docker-compose' for v1
-DOCKER_COMPOSE = docker compose
-# Define producer services
-PRODUCERS = pos-producer iot-producer inventory-producer feedback-producer batch-producer
+# Compose files
+STREAMING_COMPOSE = streaming/docker-compose.yml
+PROCESSING_COMPOSE = processing/docker-compose.yml
+ORCHESTRATION_COMPOSE = orchestration/docker-compose.yml
 
-# Use .PHONY to ensure these targets run even if files with the same name exist
-.PHONY: help start stop down init logs ps restart status clean-logs airflow-ui kafka-ui start-producers stop-producers restart-producers logs-producers
+# Use docker-compose if available, else fallback to 'docker compose'
+DOCKER_COMPOSE = $(shell command -v docker-compose 2>/dev/null || echo "docker compose")
 
-# Default command: show help message
 help:
-	@echo "------------------------------------------------------------------"
-	@echo " Bakery Data Engineering Project - Command Menu"
-	@echo "------------------------------------------------------------------"
-	@echo "Usage: make [command]"
-	@echo ""
-	@echo "Commands:"
-	@echo "  help              Show this help message."
-	@echo "  start             Start all services from all modules in the background."
-	@echo "  init              Initialize the system by creating Kafka topics."
-	@echo "  stop              Stop all running services without removing data."
-	@echo "  down              Stop all services and remove containers, networks, and volumes."
-	@echo "  restart           Restart all services (stop then start)."
-	@echo "  logs              Follow the logs of all running services."
-	@echo "  ps                List all running containers for this project."
-	@echo "  status            Show detailed status of all services."
-	@echo "  airflow-ui        Open Airflow UI in browser (http://localhost:8080)."
-	@echo "  kafka-ui          Open Kafka UI in browser (http://localhost:8081)."
-	@echo "  clean-logs        Clean up Airflow logs directory."
-	@echo ""
-	@echo "Producer Commands:"
-	@echo "  start-producers   Start all data producers."
-	@echo "  stop-producers    Stop all data producers."
-	@echo "  restart-producers Restart all data producers."
-	@echo "  logs-producers    Show logs for all producers."
-	@echo "------------------------------------------------------------------"
+	@echo "Available targets:"
+	@echo "  make start     - Build and start all services, initialize pipeline"
+	@echo "  make stop      - Stop all services"
+	@echo "  make build     - Build all Docker images"
+	@echo "  make clean     - Remove all containers, volumes, and network"
+	@echo "  make status    - Show status of all services"
+	@echo "  make logs      - Show logs for all services"
 
-# Start all services defined in the compose files
-start:
-	@echo "[START] Starting all bakery project services..."
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) up -d --remove-orphans
-	@echo "[SUCCESS] All services started successfully!"
-	@echo "Access points:"
-	@echo "  - Airflow UI: http://localhost:8080 (admin/admin)"
-	@echo "  - Kafka UI: http://localhost:8081"
-	@echo "  - MinIO Console: http://localhost:9001 (minioadmin/minioadmin)"
-	@echo "  - Spark Master: http://localhost:8082"
-	@echo ""
-	@echo "Producers running:"
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) ps $(PRODUCERS)
-
-# Stop running services
-stop:
-	@echo "[STOP] Stopping all services..."
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) stop
-	@echo "[SUCCESS] All services stopped."
-
-# Stop and remove all containers, networks, and data volumes for a clean restart
-down:
-	@echo "[TEARDOWN] Tearing down the entire environment..."
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) down --remove-orphans -v
-	@echo "[SUCCESS] Environment cleaned up."
-
-# Initialize the environment after services are started
-init:
-	@echo "[INIT] Initializing the system..."
-	@echo "=> Waiting 15 seconds for Kafka to be fully ready..."
-	@timeout 15
-	@echo "=> Creating Kafka topics..."
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T kafka kafka-topics --create --topic bakery-pos-events --bootstrap-server kafka:9092 --partitions 3 --replication-factor 1 --if-not-exists || echo "Topic bakery-pos-events already exists"
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T kafka kafka-topics --create --topic bakery-iot-events --bootstrap-server kafka:9092 --partitions 2 --replication-factor 1 --if-not-exists || echo "Topic bakery-iot-events already exists"
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T kafka kafka-topics --create --topic bakery-inventory-updates --bootstrap-server kafka:9092 --partitions 2 --replication-factor 1 --if-not-exists || echo "Topic bakery-inventory-updates already exists"
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T kafka kafka-topics --create --topic bakery-customer-feedback --bootstrap-server kafka:9092 --partitions 2 --replication-factor 1 --if-not-exists || echo "Topic bakery-customer-feedback already exists"
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T kafka kafka-topics --create --topic bakery-promotions --bootstrap-server kafka:9092 --partitions 1 --replication-factor 1 --if-not-exists || echo "Topic bakery-promotions already exists"
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T kafka kafka-topics --create --topic bakery-weather-data --bootstrap-server kafka:9092 --partitions 1 --replication-factor 1 --if-not-exists || echo "Topic bakery-weather-data already exists"
-	@echo "[SUCCESS] All Kafka topics created."
-	@echo "=> Listing Kafka topics:"
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T kafka kafka-topics --list --bootstrap-server kafka:9092
-	@echo "=> Note: Iceberg table creation is handled by the initial run of the Airflow DAGs."
-
-# Follow logs from all services
-logs:
-	@echo "[LOGS] Tailing logs for all services... (Press Ctrl+C to stop)"
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) logs -f --tail=100
-
-# List running containers for this project
-ps:
-	@echo "[STATUS] Listing running containers..."
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) ps
-
-# Restart all services
-restart: stop start
-	@echo "[SUCCESS] All services restarted."
-
-# Show detailed status
-status:
-	@echo "[STATUS] Checking service health..."
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) ps
-	@echo ""
-	@echo "[KAFKA] Topics list:"
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) exec -T kafka kafka-topics --list --bootstrap-server kafka:9092 2>/dev/null || echo "Kafka not ready"
-	@echo ""
-	@echo "[PRODUCERS] Status:"
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) ps $(PRODUCERS) | grep -E "pos-producer|iot-producer|inventory-producer|feedback-producer|batch-producer" || echo "No producers running"
-
-# Producer-specific commands
-start-producers:
-	@echo "[PRODUCERS] Starting all data producers..."
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) up -d $(PRODUCERS)
-	@echo "[SUCCESS] All producers started."
-
-stop-producers:
-	@echo "[PRODUCERS] Stopping all data producers..."
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) stop $(PRODUCERS)
-	@echo "[SUCCESS] All producers stopped."
-
-restart-producers:
-	@echo "[PRODUCERS] Restarting all data producers..."
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) restart $(PRODUCERS)
-	@echo "[SUCCESS] All producers restarted."
-
-logs-producers:
-	@echo "[LOGS] Showing logs for all producers... (Press Ctrl+C to stop)"
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) logs -f --tail=50 $(PRODUCERS)
-
-# Open Airflow UI
-airflow-ui:
-	@echo "[INFO] Opening Airflow UI..."
-	@start http://localhost:8080 || open http://localhost:8080 || xdg-open http://localhost:8080
-
-# Open Kafka UI
-kafka-ui:
-	@echo "[INFO] Opening Kafka UI..."
-	@start http://localhost:8081 || open http://localhost:8081 || xdg-open http://localhost:8081
-
-# Clean logs
-clean-logs:
-	@echo "[CLEAN] Removing old Airflow logs..."
-	@rm -rf orchestration/logs/*
-	@echo "[SUCCESS] Logs cleaned."
-
-# View logs for specific service
-logs-%:
-	@echo "[LOGS] Showing logs for $*..."
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) logs -f --tail=100 $*
-
-# Build images (useful for rebuilding producer images)
 build:
-	@echo "[BUILD] Building all Docker images..."
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) build
-	@echo "[SUCCESS] All images built."
+	cd streaming && "$(DOCKER_COMPOSE)" build
+	cd processing && "$(DOCKER_COMPOSE)" build
+	cd orchestration && "$(DOCKER_COMPOSE)" build || true
 
-# Build only producer images
-build-producers:
-	@echo "[BUILD] Building producer images..."
-	@$(DOCKER_COMPOSE) $(COMPOSE_FILES) build $(PRODUCERS)
-	@echo "[SUCCESS] Producer images built."
+start: build
+	@echo "Starting Docker network..."
+	@docker network create bakery-network 2>/dev/null || true
+	@echo "Starting streaming services..."
+	cd streaming && "$(DOCKER_COMPOSE)" up -d
+	@echo "Starting processing services..."
+	cd processing && "$(DOCKER_COMPOSE)" up -d
+	@echo "Starting orchestration services..."
+	cd orchestration && "$(DOCKER_COMPOSE)" up -d
+	@echo "Waiting for services to initialize..."
+	@sleep 10
+	@$(MAKE) init
+	@$(MAKE) status
+
+init:
+	@echo "Initializing MinIO buckets..."
+	@docker exec minio mc alias set myminio http://minio:9000 minioadmin minioadmin 2>/dev/null || true
+	@docker exec minio mc mb myminio/bronze --ignore-existing 2>/dev/null || true
+	@docker exec minio mc mb myminio/silver --ignore-existing 2>/dev/null || true
+	@docker exec minio mc mb myminio/gold --ignore-existing 2>/dev/null || true
+	@docker exec minio mc mb myminio/iceberg-warehouse --ignore-existing 2>/dev/null || true
+	@echo "Creating Kafka topics..."
+	@docker exec kafka-broker kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic sales-events --partitions 3 --replication-factor 1 2>/dev/null || true
+	@docker exec kafka-broker kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic equipment-metrics --partitions 3 --replication-factor 1 2>/dev/null || true
+	@docker exec kafka-broker kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic inventory-updates --partitions 3 --replication-factor 1 2>/dev/null || true
+	@echo "Copying Spark jobs to containers..."
+	@docker cp processing/jobs/. spark-submit:/opt/spark-apps/ 2>/dev/null || true
+	@docker cp processing/config/. spark-submit:/opt/spark/conf/ 2>/dev/null || true
+	@echo "Copying Airflow DAGs and plugins..."
+	@docker cp orchestration/dags/. airflow-webserver:/opt/airflow/dags/ 2>/dev/null || true
+	@docker cp orchestration/plugins/. airflow-webserver:/opt/airflow/plugins/ 2>/dev/null || true
+	@docker cp orchestration/dags/. airflow-scheduler:/opt/airflow/dags/ 2>/dev/null || true
+	@docker cp orchestration/plugins/. airflow-scheduler:/opt/airflow/plugins/ 2>/dev/null || true
+	@echo "Initializing Iceberg tables..."
+	@docker exec spark-submit spark-submit \
+		--master spark://spark-master:7077 \
+		--deploy-mode client \
+		--packages org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.3.1,software.amazon.awssdk:bundle:2.20.18,org.apache.hadoop:hadoop-aws:3.3.4 \
+		--conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions \
+		--conf spark.sql.catalog.local=org.apache.iceberg.spark.SparkCatalog \
+		--conf spark.sql.catalog.local.type=hadoop \
+		--conf spark.sql.catalog.local.warehouse=s3a://iceberg-warehouse/ \
+		--conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 \
+		--conf spark.hadoop.fs.s3a.access.key=minioadmin \
+		--conf spark.hadoop.fs.s3a.secret.key=minioadmin \
+		--conf spark.hadoop.fs.s3a.path.style.access=true \
+		--conf spark.local.dir=/tmp \
+		--conf hadoop.tmp.dir=/tmp \
+		/opt/spark-apps/init_iceberg_tables.py 2>/dev/null || true
+
+stop:
+	cd orchestration && "$(DOCKER_COMPOSE)" down
+	cd processing && "$(DOCKER_COMPOSE)" down
+	cd streaming && "$(DOCKER_COMPOSE)" down
+	@docker network rm bakery-network 2>/dev/null || true
+
+clean: stop
+	cd orchestration && "$(DOCKER_COMPOSE)" down -v --remove-orphans
+	cd processing && "$(DOCKER_COMPOSE)" down -v --remove-orphans
+	cd streaming && "$(DOCKER_COMPOSE)" down -v --remove-orphans
+	@docker system prune -f
+
+status:
+	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(kafka|spark|airflow|minio|zookeeper)" || echo "No services running"
+	@docker exec kafka-broker kafka-topics --bootstrap-server localhost:9092 --list 2>/dev/null || echo "Kafka not available"
+	@docker exec minio mc ls myminio/ 2>/dev/null || echo "MinIO not available"
+
+logs:
+	@docker logs --tail 10 kafka-broker 2>/dev/null || echo "Kafka not running"
+	@docker logs --tail 10 spark-master 2>/dev/null || echo "Spark not running"
+	@docker logs --tail 10 airflow-webserver 2>/dev/null || echo "Airflow not running" 
+
+# -------------------------------------------------------------------
+# Convenience / demo targets restored
+# -------------------------------------------------------------------
+
+producers:
+	@echo "Starting Kafka data producers (sales, equipment, inventory)..."
+	@docker exec -d kafka-producer python /app/generate_sales_events.py
+	@docker exec -d kafka-producer python /app/generate_equipment_metrics.py
+	@docker exec -d kafka-producer python /app/generate_inventory_updates.py
+
+streaming:
+	@echo "Launching Spark streaming job (stream_to_bronze.py)..."
+	@docker exec -d spark-submit spark-submit \
+		--master spark://spark-master:7077 \
+		--deploy-mode client \
+		--packages org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.3.1,org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,software.amazon.awssdk:bundle:2.20.18,org.apache.hadoop:hadoop-aws:3.3.4 \
+		--conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions \
+		--conf spark.sql.catalog.local=org.apache.iceberg.spark.SparkCatalog \
+		--conf spark.sql.catalog.local.type=hadoop \
+		--conf spark.sql.catalog.local.warehouse=s3a://iceberg-warehouse/ \
+		--conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 \
+		--conf spark.hadoop.fs.s3a.access.key=minioadmin \
+		--conf spark.hadoop.fs.s3a.secret.key=minioadmin \
+		--conf spark.hadoop.fs.s3a.path.style.access=true \
+		--conf spark.local.dir=/tmp \
+		--conf hadoop.tmp.dir=/tmp \
+		/opt/spark-apps/stream_to_bronze.py
+
+batch-etl:
+	@echo "Running batch ETL (Bronze → Silver → Gold)..."
+	@docker exec spark-submit spark-submit \
+		--master spark://spark-master:7077 \
+		--deploy-mode client \
+		--packages org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.3.1,software.amazon.awssdk:bundle:2.20.18,org.apache.hadoop:hadoop-aws:3.3.4 \
+		--conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions \
+		--conf spark.sql.catalog.local=org.apache.iceberg.spark.SparkCatalog \
+		--conf spark.sql.catalog.local.type=hadoop \
+		--conf spark.sql.catalog.local.warehouse=s3a://iceberg-warehouse/ \
+		--conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 \
+		--conf spark.hadoop.fs.s3a.access.key=minioadmin \
+		--conf spark.hadoop.fs.s3a.secret.key=minioadmin \
+		--conf spark.hadoop.fs.s3a.path.style.access=true \
+		--conf spark.local.dir=/tmp \
+		--conf hadoop.tmp.dir=/tmp \
+		--conf spark.driver.extraJavaOptions=-Duser.timezone=UTC \
+		--conf spark.executor.extraJavaOptions=-Duser.timezone=UTC \
+		/opt/spark-apps/bronze_to_silver.py
+	@docker exec spark-submit spark-submit \
+		--master spark://spark-master:7077 \
+		--deploy-mode client \
+		--packages org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.3.1,software.amazon.awssdk:bundle:2.20.18,org.apache.hadoop:hadoop-aws:3.3.4 \
+		--conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions \
+		--conf spark.sql.catalog.local=org.apache.iceberg.spark.SparkCatalog \
+		--conf spark.sql.catalog.local.type=hadoop \
+		--conf spark.sql.catalog.local.warehouse=s3a://iceberg-warehouse/ \
+		--conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 \
+		--conf spark.hadoop.fs.s3a.access.key=minioadmin \
+		--conf spark.hadoop.fs.s3a.secret.key=minioadmin \
+		--conf spark.hadoop.fs.s3a.path.style.access=true \
+		--conf spark.local.dir=/tmp \
+		--conf hadoop.tmp.dir=/tmp \
+		--conf spark.driver.extraJavaOptions=-Duser.timezone=UTC \
+		--conf spark.executor.extraJavaOptions=-Duser.timezone=UTC \
+		/opt/spark-apps/silver_to_gold.py
+
+health:
+	@echo "Running quick health checks..."
+	@docker exec kafka-broker kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1 && echo "Kafka ✅" || echo "Kafka ❌"
+	@curl -s http://localhost:8080 >/dev/null 2>&1 && echo "Spark ✅" || echo "Spark ❌"
+	@curl -s http://localhost:8081/health >/dev/null 2>&1 && echo "Airflow ✅" || echo "Airflow ❌"
+	@docker exec minio mc admin info myminio >/dev/null 2>&1 && echo "MinIO ✅" || echo "MinIO ❌"
+
+show-data:
+	@echo "Showing record counts in key tables..."
+	@docker exec spark-submit spark-sql \
+		--packages org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.3.1,software.amazon.awssdk:bundle:2.20.18,org.apache.hadoop:hadoop-aws:3.3.4 \
+		--conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions \
+		--conf spark.sql.catalog.local=org.apache.iceberg.spark.SparkCatalog \
+		--conf spark.sql.catalog.local.type=hadoop \
+		--conf spark.sql.catalog.local.warehouse=s3a://iceberg-warehouse/ \
+		--conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 \
+		--conf spark.hadoop.fs.s3a.access.key=minioadmin \
+		--conf spark.hadoop.fs.s3a.secret.key=minioadmin \
+		--conf spark.hadoop.fs.s3a.path.style.access=true \
+		--conf spark.local.dir=/tmp \
+		--conf hadoop.tmp.dir=/tmp \
+		--conf spark.driver.extraJavaOptions=-Duser.timezone=UTC \
+		--conf spark.executor.extraJavaOptions=-Duser.timezone=UTC \
+		-e "SELECT 'Bronze Sales Events' AS table_name, COUNT(*) AS cnt FROM local.bronze.sales_events;" \
+		-e "SELECT 'Silver Sales'        AS table_name, COUNT(*) AS cnt FROM local.silver.sales;" \
+		-e "SELECT 'Gold Fact Sales'    AS table_name, COUNT(*) AS cnt FROM local.gold.fact_sales;"
+
+# -------------------------------------------------------------------
+# One-time CSV ingest target
+# -------------------------------------------------------------------
+
+load-bronze:
+	@echo "Loading bronze_combined.csv ..."
+	@docker exec spark-submit spark-submit \
+		--master local[*] \
+		/opt/spark-apps/load_bronze_from_csv.py
+	@echo "✓ CSV loaded. Run 'make batch-etl' next."
+
+# Demo: full pipeline in one go
+
+demo:
+	@echo "Running full demo (start → producers → streaming → batch ETL)..."
+	@$(MAKE) start
+	@sleep 10
+	@$(MAKE) producers
+	@echo "Generating data for 30 seconds..."
+	@sleep 30
+	@$(MAKE) streaming
+	@sleep 20
+	@$(MAKE) batch-etl
+	@$(MAKE) status
+	@echo "Demo completed — check MinIO, Spark UI, and Airflow!" 
+
+csv-producer:
+	@echo "Streaming bronze_combined.csv through Kafka topics ..."
+	@docker exec -d kafka-producer python /app/csv_to_kafka.py /app/data/bronze_combined.csv
+	@echo "✓ CSV producer running in background (kafka-producer container)" 

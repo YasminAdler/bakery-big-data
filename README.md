@@ -1,92 +1,199 @@
-## To create venv in root folder 
-python -m venv .venv
+# Bakery Data Pipeline - End-to-End Data Engineering Solution
 
-## Activate the venv
-.venv/Scripts/activate
+## 🥐 Project Overview
 
-## Download requierments 
-pip install --no-cache-dir -r orchestration/requirements.txt
+This project implements a comprehensive data engineering solution for a bakery chain, featuring real-time streaming, batch processing, and advanced analytics capabilities. The pipeline processes sales events, inventory updates, customer feedback, and equipment metrics through Bronze, Silver, and Gold data layers.
 
-# Bakery Data Engineering Project
+### 🏗️ Architecture
 
-## To start the program: 
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Data Sources  │     │   Processing    │     │   Data Layers   │
+├─────────────────┤     ├─────────────────┤     ├─────────────────┤
+│ • Kafka Streams │────▶│ • Apache Spark  │────▶│ • Bronze (Raw)  │
+│ • Batch Files   │     │ • Stream & Batch│     │ • Silver (Clean)│
+│ • APIs          │     │ • Quality Checks│     │ • Gold (Business)│
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+         │                       │                        │
+         └───────────────────────┴────────────────────────┘
+                               │
+                        ┌──────▼──────┐
+                        │   Airflow   │
+                        │ Orchestrator│
+                        └─────────────┘
+```
 
-run your docker desktop 
+##  Quick Start
+### One-Command Setup (Recommended)
 
-docker network create bakery-network
+Run **all** services and initialize the complete environment with a single command:
 
-### To start everything:
+```bash
 make start
+```
 
-### To start the producers: 
-make start-producers
+This will automatically:
+1. Build every Docker image
+2. Create the shared `bakery-network`
+3. Launch Kafka, Spark, Airflow, and MinIO containers
+4. Wait until each service is healthy
+5. Initialise MinIO buckets, Kafka topics, and all Iceberg tables
+6. Print the status and access URLs
 
-### To initialize the topics and tables after starting:
-make init
+Once finished open the UIs:
 
-### To shut everything down completely:
-make down
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Spark UI | http://localhost:8080 | — |
+| MinIO Console | http://localhost:9001 | minioadmin / minioadmin |
+| Airflow UI | http://localhost:8081 | airflow / airflow |
+| Kafka UI | http://localhost:8090 | — |
 
-## Overview
-This project implements a comprehensive data engineering solution for a bakery business, featuring real-time streaming, batch processing, data quality management, and machine learning feature engineering.
+Need to stop everything? Use `make stop` (containers remain) or `make clean` (full cleanup).
 
-## Architecture
-- **Streaming Layer**: Apache Kafka for real-time POS and IoT data
-- **Storage Layer**: MinIO (S3-compatible) with Bronze/Silver/Gold architecture
-- **Processing Layer**: Apache Spark for batch and stream processing
-- **Table Format**: Apache Iceberg for ACID transactions and time travel
-- **Orchestration**: Apache Airflow for workflow management
+### Manual Setup (Alternative)
 
 ### Prerequisites
-- Docker Desktop with at least 8GB RAM allocated
-- Python 3.8+
-- Git
+- Docker Desktop installed and running
+- At least 8GB RAM available
+- 20GB free disk space
 
-### Setup Instructions
+### 1️⃣ Clone the Repository
+```bash
+git clone <repository-url>
+cd bakery-data-pipeline
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd bakery-data-engineering
+### 2️⃣ Start All Services
+```bash
+# Start all services with a single command
+docker-compose -f orchestration/docker-compose.yml -f streaming/docker-compose.yml -f processing/docker-compose.yml up -d
+```
 
-2. **Create the shared network**
-docker-compose up -d
+### 3️⃣ Run Initial Setup
+```bash
+# Create MinIO buckets
+docker exec -it minio mc alias set myminio http://minio:9000 minioadmin minioadmin
+docker exec -it minio mc mb myminio/bronze
+docker exec -it minio mc mb myminio/silver
+docker exec -it minio mc mb myminio/gold
 
-3. **Start storage layer (MinIO)**
-cd processing
-docker-compose up -d minio create-buckets
+# Start data generators
+docker exec -it kafka-producer python /app/generate_sales_events.py
+```
 
-4. **Start streaming layer (Kafka)**
-cd ../streaming
-docker-compose up -d zookeeper kafka kafka-ui
+## 📊 Data Flow
 
-5. **Start processing layer (Spark)**
-cd ../processing
-docker-compose up -d spark-master spark-worker-1 spark-worker-2
+### Bronze Layer (Raw Data)
+- `bronze_sales_events` - Real-time sales transactions
+- `bronze_inventory_updates` - Inventory changes (handles late arrivals)
+- `bronze_customer_feedback` - Customer reviews and ratings
+- `bronze_promotions` - Marketing campaigns
+- `bronze_weather_data` - Weather conditions
+- `bronze_equipment_metrics` - Equipment IoT sensor data
 
-6.**Start orchestration (Airflow)**
-cd ../orchestration
-docker-compose up -d
+### Silver Layer (Standardized)
+- Cleaned and validated data
+- Standardized formats
+- Data quality scores
+- Partitioned by date
 
-7.**Start data producers**
-cd ../streaming
-docker-compose up -d pos-producer iot-producer
+### Gold Layer (Business-Ready)
+- **Dimensions**: Store, Product, Customer, Equipment, Calendar, Weather
+- **Facts**: Sales, Inventory, Promotions, Customer Feedback, Equipment Performance
+- **ML Features**: Demand Forecasting, Maintenance Prediction, Quality Prediction
 
+## 🛠️ Technology Stack
 
-**Access Points**
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Storage | MinIO + Apache Iceberg | S3-compatible object storage with ACID transactions |
+| Streaming | Apache Kafka | Real-time event streaming |
+| Processing | Apache Spark | Batch and stream processing |
+| Orchestration | Apache Airflow | Workflow scheduling and monitoring |
+| Containerization | Docker Compose | Service isolation and deployment |
 
-Airflow UI: http://localhost:8080
+## 📁 Project Structure
+```
+bakery-data-pipeline/
+├── orchestration/          # Airflow DAGs and configuration
+│   ├── dags/              # DAG definitions
+│   ├── plugins/           # Custom operators
+│   └── docker-compose.yml # Airflow services
+├── streaming/             # Kafka setup and producers
+│   ├── producers/         # Python data generators
+│   ├── config/           # Kafka configuration
+│   └── docker-compose.yml # Kafka services
+├── processing/            # Spark applications
+│   ├── jobs/             # ETL job definitions
+│   ├── config/           # Spark configuration
+│   └── docker-compose.yml # Spark services
+├── docs/                  # Additional documentation
+│   ├── data_models.md    # Mermaid diagrams
+│   └── setup_guide.md    # Detailed setup instructions
+└── README.md             # This file
+```
 
-username: admin 
-password: admin
+## 🔄 Key Features
 
-Kafka UI: http://localhost:8081
+### Real-Time Processing
+- Kafka streams for sales events and equipment metrics
+- Spark Structured Streaming for low-latency processing
+- Exactly-once semantics with Iceberg
 
-Spark UI: http://localhost:8082
+### Late Arrival Handling
+- 48-hour window for late-arriving inventory data
+- Event time processing with watermarks
+- Automatic reprocessing of updated records
 
-MinIO Console: http://localhost:9001 
+### Data Quality
+- Validation checks at each layer
+- Data quality scoring
+- Automated alerting for anomalies
 
-username: minioadmin
-password: minioadmin
+### SCD Type 2 Implementation
+- Historical tracking for Store and Product Pricing dimensions
+- Effective date management
+- Current record flagging
 
-Spark Master: http://localhost:8082
+## 📈 Analytics Capabilities
+
+### Business Intelligence
+- Sales performance dashboards
+- Inventory optimization metrics
+- Customer satisfaction analysis
+- Equipment efficiency monitoring
+
+### Machine Learning Features
+- Demand forecasting with seasonality
+- Predictive maintenance for equipment
+- Product quality prediction
+- Customer churn analysis
+
+## 🛠️ Makefile Cheat-Sheet
+
+| Command | What it does |
+|---------|--------------|
+| `make start` | Build images, start all services, initialize infrastructure |
+| `make init` | (Re)create buckets, topics, and Iceberg tables |
+| `make batch-etl` | Run Bronze→Silver→Gold batch ETL jobs |
+| `make show-data` | Quick record counts in Bronze/Silver/Gold |
+| `make stop` | Stop all running containers |
+| `make clean` | Remove containers, volumes, and network |
+
+Run any target with `make <target>`—for example `make producers` to begin generating real-time data.
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Services not starting**: Check Docker memory allocation (minimum 4GB)
+2. **Kafka connection errors**: Ensure all services are in the same Docker network
+3. **Spark job failures**: Check MinIO bucket permissions
+4. **Airflow DAG errors**: Review logs in Airflow UI
+
+### Logs Location
+- Airflow: `./orchestration/logs/`
+- Spark: Access via Spark UI or container logs
+- Kafka: `docker logs kafka-broker`
+
