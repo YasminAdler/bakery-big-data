@@ -1,0 +1,32 @@
+[2025-07-14T00:00:05.304+0000] {processor.py:157} INFO - Started process (PID=4719) to work on /opt/airflow/dags/bakery_streaming_manager.py
+[2025-07-14T00:00:05.308+0000] {processor.py:829} INFO - Processing file /opt/airflow/dags/bakery_streaming_manager.py for tasks to queue
+[2025-07-14T00:00:05.311+0000] {logging_mixin.py:151} INFO - [2025-07-14T00:00:05.310+0000] {dagbag.py:536} INFO - Filling up the DagBag from /opt/airflow/dags/bakery_streaming_manager.py
+[2025-07-14T00:00:05.458+0000] {logging_mixin.py:151} WARNING - /home/airflow/.local/lib/python3.8/site-packages/airflow/operators/bash.py:150 RemovedInAirflow3Warning: none_failed_or_skipped Trigger Rule is deprecated. Please use `none_failed_min_one_success`.
+[2025-07-14T00:00:05.567+0000] {processor.py:839} INFO - DAG(s) dict_keys(['bakery_streaming_manager']) retrieved from /opt/airflow/dags/bakery_streaming_manager.py
+[2025-07-14T00:00:06.828+0000] {logging_mixin.py:151} INFO - [2025-07-14T00:00:06.827+0000] {dag.py:2941} INFO - Sync 1 DAGs
+[2025-07-14T00:00:06.956+0000] {logging_mixin.py:151} INFO - [2025-07-14T00:00:06.955+0000] {dag.py:3722} INFO - Setting next_dagrun for bakery_streaming_manager to 2025-07-13T23:00:00+00:00, run_after=2025-07-14T00:00:00+00:00
+[2025-07-14T00:00:07.212+0000] {processor.py:179} INFO - Processing /opt/airflow/dags/bakery_streaming_manager.py took 1.923 seconds
+[2025-07-14T00:18:44.614+0000] {processor.py:157} INFO - Started process (PID=4736) to work on /opt/airflow/dags/bakery_streaming_manager.py
+[2025-07-14T00:18:44.616+0000] {processor.py:829} INFO - Processing file /opt/airflow/dags/bakery_streaming_manager.py for tasks to queue
+[2025-07-14T00:18:44.618+0000] {logging_mixin.py:151} INFO - [2025-07-14T00:18:44.618+0000] {dagbag.py:536} INFO - Filling up the DagBag from /opt/airflow/dags/bakery_streaming_manager.py
+[2025-07-14T00:18:44.723+0000] {logging_mixin.py:151} WARNING - /home/airflow/.local/lib/python3.8/site-packages/airflow/operators/bash.py:150 RemovedInAirflow3Warning: none_failed_or_skipped Trigger Rule is deprecated. Please use `none_failed_min_one_success`.
+[2025-07-14T00:18:44.737+0000] {processor.py:839} INFO - DAG(s) dict_keys(['bakery_streaming_manager']) retrieved from /opt/airflow/dags/bakery_streaming_manager.py
+[2025-07-14T00:18:44.891+0000] {logging_mixin.py:151} INFO - [2025-07-14T00:18:44.890+0000] {dag.py:2941} INFO - Sync 1 DAGs
+[2025-07-14T00:18:45.045+0000] {logging_mixin.py:151} INFO - [2025-07-14T00:18:45.042+0000] {dag.py:3722} INFO - Setting next_dagrun for bakery_streaming_manager to 2025-07-13T23:00:00+00:00, run_after=2025-07-14T00:00:00+00:00
+[2025-07-14T00:18:45.182+0000] {processor.py:179} INFO - Processing /opt/airflow/dags/bakery_streaming_manager.py took 0.580 seconds
+[2025-07-14T00:19:29.858+0000] {processor.py:157} INFO - Started process (PID=4753) to work on /opt/airflow/dags/bakery_streaming_manager.py
+[2025-07-14T00:19:29.865+0000] {processor.py:829} INFO - Processing file /opt/airflow/dags/bakery_streaming_manager.py for tasks to queue
+[2025-07-14T00:19:29.872+0000] {logging_mixin.py:151} INFO - [2025-07-14T00:19:29.871+0000] {dagbag.py:536} INFO - Filling up the DagBag from /opt/airflow/dags/bakery_streaming_manager.py
+[2025-07-14T00:19:30.011+0000] {logging_mixin.py:151} WARNING - /home/airflow/.local/lib/python3.8/site-packages/airflow/operators/bash.py:150 RemovedInAirflow3Warning: none_failed_or_skipped Trigger Rule is deprecated. Please use `none_failed_min_one_success`.
+[2025-07-14T00:19:30.029+0000] {processor.py:839} INFO - DAG(s) dict_keys(['bakery_streaming_manager']) retrieved from /opt/airflow/dags/bakery_streaming_manager.py
+[2025-07-14T00:19:30.194+0000] {logging_mixin.py:151} INFO - [2025-07-14T00:19:30.193+0000] {dag.py:2941} INFO - Sync 1 DAGs
+[2025-07-14T00:19:30.322+0000] {logging_mixin.py:151} INFO - [2025-07-14T00:19:30.322+0000] {dag.py:3722} INFO - Setting next_dagrun for bakery_streaming_manager to 2025-07-13T23:00:00+00:00, run_after=2025-07-14T00:00:00+00:00
+[2025-07-14T00:19:30.415+0000] {processor.py:179} INFO - Processing /opt/airflow/dags/bakery_streaming_manager.py took 0.564 seconds
+[2025-07-14T02:34:04.114+0000] {processor.py:157} INFO - Started process (PID=4770) to work on /opt/airflow/dags/bakery_streaming_manager.py
+[2025-07-14T02:34:04.164+0000] {processor.py:829} INFO - Processing file /opt/airflow/dags/bakery_streaming_manager.py for tasks to queue
+[2025-07-14T02:34:04.227+0000] {logging_mixin.py:151} INFO - [2025-07-14T02:34:04.226+0000] {dagbag.py:536} INFO - Filling up the DagBag from /opt/airflow/dags/bakery_streaming_manager.py
+[2025-07-14T02:34:36.257+0000] {logging_mixin.py:151} WARNING - /home/airflow/.local/lib/python3.8/site-packages/airflow/operators/bash.py:150 RemovedInAirflow3Warning: none_failed_or_skipped Trigger Rule is deprecated. Please use `none_failed_min_one_success`.
+[2025-07-14T02:34:36.292+0000] {processor.py:839} INFO - DAG(s) dict_keys(['bakery_streaming_manager']) retrieved from /opt/airflow/dags/bakery_streaming_manager.py
+[2025-07-14T02:34:36.516+0000] {logging_mixin.py:151} INFO - [2025-07-14T02:34:36.515+0000] {dag.py:2941} INFO - Sync 1 DAGs
+[2025-07-14T02:34:36.701+0000] {logging_mixin.py:151} INFO - [2025-07-14T02:34:36.700+0000] {dag.py:3722} INFO - Setting next_dagrun for bakery_streaming_manager to 2025-07-14T01:00:00+00:00, run_after=2025-07-14T02:00:00+00:00
+[2025-07-14T02:34:38.157+0000] {processor.py:179} INFO - Processing /opt/airflow/dags/bakery_streaming_manager.py took 3.519 seconds
