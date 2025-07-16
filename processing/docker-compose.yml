@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  spark-master:
+    image: bitnami/spark:3.4.1
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+      - "4040:4040"
+    volumes:
+      - spark-logs:/opt/spark/logs
+    networks:
+      - bakery-network
+
+  spark-worker:
+    image: bitnami/spark:3.4.1
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    networks:
+      - bakery-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - bakery-network
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      mc mb myminio/bronze || true;
+      mc mb myminio/silver || true;
+      mc mb myminio/gold || true;
+      mc mb myminio/iceberg-warehouse || true;
+      exit 0;
+      "
+    networks:
+      - bakery-network
+
+  spark-submit:
+    image: bitnami/spark:3.4.1
+    container_name: spark-submit
+    depends_on:
+      - spark-master
+      - minio-init
+    environment:
+      - SPARK_MODE=client
+    networks:
+      - bakery-network
+    command: sleep infinity
+
+volumes:
+  minio-data:
+  spark-logs:
+
+networks:
+  bakery-network:
+    external: true
+    name: bakery-network 
