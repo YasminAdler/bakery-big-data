@@ -196,7 +196,21 @@ show-data:
 load-bronze:
 	@echo "Loading bronze_combined.csv ..."
 	@docker exec spark-submit spark-submit \
-		--master local[*] \
+		--master spark://spark-master:7077 \
+		--deploy-mode client \
+		--packages org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.3.1,software.amazon.awssdk:bundle:2.20.18,org.apache.hadoop:hadoop-aws:3.3.4 \
+		--conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions \
+		--conf spark.sql.catalog.local=org.apache.iceberg.spark.SparkCatalog \
+		--conf spark.sql.catalog.local.type=hadoop \
+		--conf spark.sql.catalog.local.warehouse=s3a://iceberg-warehouse/ \
+		--conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 \
+		--conf spark.hadoop.fs.s3a.access.key=minioadmin \
+		--conf spark.hadoop.fs.s3a.secret.key=minioadmin \
+		--conf spark.hadoop.fs.s3a.path.style.access=true \
+		--conf spark.local.dir=/tmp \
+		--conf hadoop.tmp.dir=/tmp \
+		--conf spark.driver.extraJavaOptions=-Duser.timezone=UTC \
+		--conf spark.executor.extraJavaOptions=-Duser.timezone=UTC \
 		/opt/spark-apps/load_bronze_from_csv.py
 	@echo "✓ CSV loaded. Run 'make batch-etl' next."
 

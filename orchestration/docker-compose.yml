@@ -2,7 +2,7 @@ version: '3.8'
 
 x-airflow-common:
   &airflow-common
-  image: apache/airflow:2.7.2
+  build: .
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -25,7 +25,17 @@ x-airflow-common:
     _AIRFLOW_WWW_USER_PASSWORD: 'airflow'
   volumes:
     - airflow-logs:/opt/airflow/logs
-  user: "${AIRFLOW_UID:-50000}:0"
+    - /var/run/docker.sock:/var/run/docker.sock
+    - ../makefile:/opt/airflow/makefile
+    - ../streaming/docker-compose.yml:/opt/airflow/streaming/docker-compose.yml
+    - ../processing/docker-compose.yml:/opt/airflow/processing/docker-compose.yml
+    - .:/opt/airflow/orchestration
+    - ./bakery_batch_etl.py:/opt/airflow/dags/bakery_batch_etl.py
+    - ./bakery_csv_etl_pipeline.py:/opt/airflow/dags/bakery_csv_etl_pipeline.py
+    - ./bakery_csv_manual_trigger.py:/opt/airflow/dags/bakery_csv_manual_trigger.py
+    - ./bakery_init_infrastructure.py:/opt/airflow/dags/bakery_init_infrastructure.py
+    - ./bakery_streaming_manager.py:/opt/airflow/dags/bakery_streaming_manager.py
+  user: "root"
   depends_on:
     postgres:
       condition: service_healthy
@@ -58,7 +68,7 @@ services:
     ports:
       - "8081:8080"  # Host 8081 -> Container 8080 to avoid conflict with Spark UI
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8081/health"]
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 5
