@@ -1,15 +1,9 @@
-"""
-Bakery Infrastructure Initialization DAG
-One-time setup DAG to initialize all infrastructure components
-"""
-
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 
-# Default arguments
 default_args = {
     'owner': 'data-engineering',
     'depends_on_past': False,
@@ -21,17 +15,15 @@ default_args = {
     'retry_delay': timedelta(minutes=2)
 }
 
-# DAG definition
 dag = DAG(
     'bakery_init_infrastructure',
     default_args=default_args,
     description='Initialize all infrastructure components for bakery data pipeline',
-    schedule_interval=None,  # Manual trigger only
+    schedule_interval=None,
     catchup=False,
     tags=['setup', 'initialization', 'infrastructure']
 )
 
-# Task: Create Docker network
 create_network = BashOperator(
     task_id='create_docker_network',
     bash_command="""

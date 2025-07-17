@@ -1,8 +1,3 @@
-"""
-Bakery Batch ETL DAG
-Daily batch processing pipeline for Bronze → Silver → Gold layers
-"""
-
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
@@ -12,7 +7,6 @@ from airflow.utils.task_group import TaskGroup
 from airflow.models import Variable
 import os
 
-# Default arguments
 default_args = {
     'owner': 'data-engineering',
     'depends_on_past': False,
@@ -24,17 +18,15 @@ default_args = {
     'retry_delay': timedelta(minutes=5)
 }
 
-# DAG definition
 dag = DAG(
     'bakery_batch_etl',
     default_args=default_args,
     description='Daily batch ETL pipeline for bakery data',
-    schedule_interval='0 2 * * *',  # Run at 2 AM daily
+    schedule_interval=timedelta(hours=2),
     catchup=False,
     tags=['etl', 'batch', 'daily']
 )
 
-# Spark submit command template
 SPARK_SUBMIT_CMD = """
 docker exec spark-submit spark-submit \
     --master spark://spark-master:7077 \
@@ -60,10 +52,7 @@ org.apache.hadoop:hadoop-aws:3.3.4 \
 
 
 def check_data_quality_threshold(**context):
-    """Check if data quality meets minimum threshold"""
-    # In production, this would query the quality metrics from the database
-    # For now, we'll simulate a quality check
-    quality_score = 85  # Simulated score
+    quality_score = 85
     threshold = 80
     
     if quality_score < threshold:
@@ -73,18 +62,15 @@ def check_data_quality_threshold(**context):
     return True
 
 
-# Task: Check source data availability
 check_source_data = BashOperator(
     task_id='check_source_data',
     bash_command="""
     echo "Checking source data availability..."
-    # In production, would check Kafka topics, MinIO buckets, etc.
     echo "Source data check completed"
     """,
     dag=dag
 )
 
-# Task: Generate batch data (for demo purposes)
 generate_batch_data = BashOperator(
     task_id='generate_batch_data',
     bash_command="""
@@ -92,21 +78,20 @@ generate_batch_data = BashOperator(
     docker exec kafka-producer python /app/generate_sales_events.py &
     docker exec kafka-producer python /app/generate_inventory_updates.py &
     docker exec kafka-producer python /app/generate_equipment_metrics.py &
-    sleep 60  # Let it generate some data
+    sleep 60
     pkill -f generate_
     echo "Batch data generation completed"
     """,
     dag=dag
 )
 
-# Task Group: Bronze to Silver Processing
 with TaskGroup("bronze_to_silver", dag=dag) as bronze_to_silver:
     
     process_bronze_to_silver = BashOperator(
         task_id='process_bronze_to_silver',
         bash_command=SPARK_SUBMIT_CMD.format(
             job_file="bronze_to_silver.py",
-            job_args="{{ ds }}"  # Pass execution date
+            job_args="{{ ds }}"
         ),
         dag=dag
     )
@@ -119,7 +104,6 @@ with TaskGroup("bronze_to_silver", dag=dag) as bronze_to_silver:
     
     process_bronze_to_silver >> validate_silver_data
 
-# Task Group: Silver to Gold Processing
 with TaskGroup("silver_to_gold", dag=dag) as silver_to_gold:
     
     process_silver_to_gold = BashOperator(
@@ -142,7 +126,6 @@ with TaskGroup("silver_to_gold", dag=dag) as silver_to_gold:
     
     process_silver_to_gold >> update_ml_features
 
-# Task: Generate daily reports
 generate_reports = BashOperator(
     task_id='generate_reports',
     bash_command="""
@@ -156,7 +139,6 @@ generate_reports = BashOperator(
     dag=dag
 )
 
-# Task: Data quality summary
 data_quality_summary = BashOperator(
     task_id='data_quality_summary',
     bash_command="""
@@ -167,17 +149,13 @@ data_quality_summary = BashOperator(
     dag=dag
 )
 
-# Task: Cleanup old data
 cleanup_old_data = BashOperator(
     task_id='cleanup_old_data',
     bash_command="""
     echo "Cleaning up old data..."
-    # In production, would implement data retention policies
-    # For example, archive Bronze data older than 7 days
     echo "Cleanup completed"
     """,
     dag=dag
 )
 
-# Define task dependencies
 check_source_data >> generate_batch_data >> bronze_to_silver >> silver_to_gold >> [generate_reports, data_quality_summary] >> cleanup_old_data 

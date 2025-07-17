@@ -141,12 +141,12 @@ def update_dim_store_scd2(spark, process_date):
     
     if changes.count() > 0:
         # Close existing records for changed stores
-        changed_store_ids = changes.select("store_id").rdd.flatMap(lambda x: x).collect()
+        changed_store_ids = changes.select("new.store_id").rdd.flatMap(lambda x: x).collect()
         
         spark.sql(f"""
             UPDATE local.gold.dim_store
             SET is_current_flag = false,
-                end_date = '{process_date}'
+                end_date = DATE('{process_date}')
             WHERE store_id IN ({','.join(map(str, changed_store_ids))})
             AND is_current_flag = true
         """)
@@ -155,10 +155,12 @@ def update_dim_store_scd2(spark, process_date):
         max_key = spark.sql("SELECT COALESCE(MAX(store_key), 0) as max_key FROM local.gold.dim_store").first()["max_key"]
         
         new_records = changes.select("new.*") \
-            .withColumn("store_key", monotonically_increasing_id() + max_key + 1) \
-            .withColumn("effective_date", lit(process_date)) \
+            .withColumn("row_num", row_number().over(Window.orderBy("store_id"))) \
+            .withColumn("store_key", (col("row_num") + max_key).cast("int")) \
+            .withColumn("effective_date", lit(process_date).cast("date")) \
             .withColumn("end_date", lit(None).cast("date")) \
-            .withColumn("is_current_flag", lit(True))
+            .withColumn("is_current_flag", lit(True)) \
+            .drop("row_num")
         
         new_records.write.mode("append").saveAsTable("local.gold.dim_store")
         logger.info(f"Updated {new_records.count()} store records")
@@ -191,7 +193,7 @@ def update_dim_product_pricing_scd2(spark, process_date):
             when(col("price_category") == "Budget", "Volume Sales")
             .when(col("price_category") == "Standard", "Balanced")
             .otherwise("Premium Quality")) \
-        .withColumn("base_price_creation_date", lit(process_date))
+        .withColumn("base_price_creation_date", lit(process_date).cast("date"))
     
     # Get existing current pricing
     existing_pricing = spark.sql("""
@@ -211,12 +213,12 @@ def update_dim_product_pricing_scd2(spark, process_date):
     
     if price_changes.count() > 0:
         # Close existing records
-        changed_product_ids = price_changes.select("product_id").rdd.flatMap(lambda x: x).collect()
+        changed_product_ids = price_changes.select("new.product_id").rdd.flatMap(lambda x: x).collect()
         
         spark.sql(f"""
             UPDATE local.gold.dim_product_pricing
             SET is_current_record = false,
-                end_date = '{process_date}'
+                end_date = DATE('{process_date}')
             WHERE product_id IN ({','.join(map(str, changed_product_ids))})
             AND is_current_record = true
         """)
@@ -225,10 +227,12 @@ def update_dim_product_pricing_scd2(spark, process_date):
         max_key = spark.sql("SELECT COALESCE(MAX(pricing_key), 0) as max_key FROM local.gold.dim_product_pricing").first()["max_key"]
         
         new_pricing = price_changes.select("new.*") \
-            .withColumn("pricing_key", monotonically_increasing_id() + max_key + 1) \
-            .withColumn("effective_date", lit(process_date)) \
+            .withColumn("row_num", row_number().over(Window.orderBy("product_id"))) \
+            .withColumn("pricing_key", (col("row_num") + max_key).cast("int")) \
+            .withColumn("effective_date", lit(process_date).cast("date")) \
             .withColumn("end_date", lit(None).cast("date")) \
-            .withColumn("is_current_record", lit(True))
+            .withColumn("is_current_record", lit(True)) \
+            .drop("row_num")
         
         new_pricing.write.mode("append").saveAsTable("local.gold.dim_product_pricing")
         logger.info(f"Updated {new_pricing.count()} pricing records")
@@ -264,7 +268,9 @@ def update_dim_customer(spark, process_date):
     max_key = spark.sql("SELECT COALESCE(MAX(customer_key), 0) as max_key FROM local.gold.dim_customer").first()["max_key"]
     
     new_customers = customer_details \
-        .withColumn("customer_key", monotonically_increasing_id() + max_key + 1)
+        .withColumn("row_num", row_number().over(Window.orderBy("customer_id"))) \
+        .withColumn("customer_key", (col("row_num") + max_key).cast("int")) \
+        .drop("row_num")
     
     # Merge new customers
     new_customers.createOrReplaceTempView("new_customers")
@@ -379,14 +385,25 @@ def load_fact_equipment_performance(spark, process_date):
         GROUP BY equipment_id, metric_date
     """)
     
-    # Calculate efficiency score
+    # Calculate efficiency score and select final columns in correct order
     fact_performance = daily_performance \
         .withColumn("performance_id", concat(col("equipment_id"), lit("_"), col("date"))) \
         .withColumn("avg_temperature", lit(None).cast("decimal(5,2)")) \
         .withColumn("efficiency_score", 
             greatest(lit(0), least(lit(100), 
                 (col("operational_hours") / 24 * 100) - (col("downtime_minutes") / 60 * 10)
-            )))
+            ))) \
+        .select(
+            "performance_id",
+            "equipment_id", 
+            "date",
+            "operational_hours",
+            "avg_temperature",
+            "total_power_consumption",
+            "maintenance_events",
+            "downtime_minutes",
+            "efficiency_score"
+        )
     
     # Write to fact table
     fact_performance.write.mode("append").saveAsTable("local.gold.fact_equipment_performance")
@@ -402,8 +419,19 @@ def main():
     spark = create_spark_session()
     spark.sparkContext.setLogLevel("WARN")
     
-    # Get process date (default to yesterday)
-    process_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    # Get the most recent date with data instead of assuming today
+    latest_date_result = spark.sql("""
+        SELECT MAX(sale_date) as latest_date 
+        FROM local.silver.sales 
+        WHERE sale_date IS NOT NULL
+    """).collect()
+    
+    if latest_date_result and latest_date_result[0]["latest_date"]:
+        process_date = latest_date_result[0]["latest_date"].strftime("%Y-%m-%d")
+    else:
+        process_date = datetime.now().strftime("%Y-%m-%d")
+    
+    logger.info(f"Processing date determined as: {process_date}")
     
     try:
         logger.info(f"Starting Silver to Gold ETL for date: {process_date}")

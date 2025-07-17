@@ -1,14 +1,9 @@
-# Bakery Data Pipeline - Makefile
-# For best results, run from Git Bash or WSL on Windows
-
 .PHONY: help start stop build clean init status logs load-bronze csv-producer
 
-# Compose files
 STREAMING_COMPOSE = streaming/docker-compose.yml
 PROCESSING_COMPOSE = processing/docker-compose.yml
 ORCHESTRATION_COMPOSE = orchestration/docker-compose.yml
 
-# Use docker-compose if available, else fallback to 'docker compose'
 DOCKER_COMPOSE = $(shell command -v docker-compose 2>/dev/null || echo "docker compose")
 
 help:

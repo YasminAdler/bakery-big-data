@@ -13,7 +13,6 @@ x-airflow-common:
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
-    # Spark configuration
     SPARK_MASTER_URL: spark://spark-master:7077
     KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     MINIO_ENDPOINT: http://minio:9000
@@ -66,7 +65,7 @@ services:
     container_name: airflow-webserver
     command: webserver
     ports:
-      - "8081:8080"  # Host 8081 -> Container 8080 to avoid conflict with Spark UI
+      - "8081:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s

@@ -188,6 +188,7 @@ def create_silver_tables(spark):
             rating INT,
             review_text STRING,
             sentiment_category STRING,
+            data_quality_score INT,
             source_system STRING,
             etl_timestamp TIMESTAMP
         ) USING iceberg
@@ -205,6 +206,7 @@ def create_silver_tables(spark):
             operational_status STRING,
             operational_hours DECIMAL(5,2),
             maintenance_alert BOOLEAN,
+            data_quality_score INT,
             source_system STRING,
             etl_timestamp TIMESTAMP
         ) USING iceberg

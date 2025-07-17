@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-Bronze to Silver ETL Job
-Cleanses and standardizes data from Bronze to Silver layer with data quality checks
-"""
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
@@ -15,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 def create_spark_session():
-    """Create Spark session with Iceberg configuration"""
     return SparkSession.builder \
         .appName("Bronze to Silver ETL") \
         .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \
@@ -26,11 +21,8 @@ def create_spark_session():
 
 
 def calculate_data_quality_score(df, checks):
-    """Calculate data quality score based on multiple checks"""
-    # Start with score of 100
     df = df.withColumn("data_quality_score", lit(100))
     
-    # Apply each check and deduct points for failures
     for check_name, check_expr, penalty in checks:
         df = df.withColumn(
             "data_quality_score",
@@ -42,17 +34,14 @@ def calculate_data_quality_score(df, checks):
 
 
 def process_sales_to_silver(spark, process_date):
-    """Process sales events from Bronze to Silver"""
     logger.info(f"Processing sales data for date: {process_date}")
     
-    # Read from Bronze
     bronze_sales = spark.sql(f"""
         SELECT * FROM local.bronze.sales_events
         WHERE date = '{process_date}'
         AND processing_status = 'pending'
     """)
     
-    # Data quality checks for sales
     quality_checks = [
         ("valid_product_id", col("product_id").between(1, 10), 20),
         ("valid_store_id", col("store_id").between(1, 5), 20),
@@ -61,7 +50,6 @@ def process_sales_to_silver(spark, process_date):
         ("valid_time_of_day", col("time_of_day").isin("morning", "lunch", "afternoon", "evening"), 10)
     ]
     
-    # Transform and apply quality checks
     silver_sales = bronze_sales \
         .withColumn("sale_id", col("event_id")) \
         .withColumn("sale_date", col("date")) \
@@ -89,53 +77,47 @@ def process_sales_to_silver(spark, process_date):
     
     spark.sql("""
         MERGE INTO local.silver.sales t
-        USING sales_updates s
-        ON t.sale_id = s.sale_id
-        WHEN NOT MATCHED THEN INSERT *
-    """)
-    
-    # Update processing status in Bronze
-    spark.sql(f"""
-        UPDATE local.bronze.sales_events
-        SET processing_status = 'processed'
-        WHERE date = '{process_date}'
-        AND processing_status = 'pending'
-    """)
-    
-    record_count = final_silver_sales.count()
-    logger.info(f"Processed {record_count} sales records to Silver layer")
-    
-    return record_count
+            USING sales_updates s
+    ON t.sale_id = s.sale_id
+    WHEN NOT MATCHED THEN INSERT *
+""")
+
+spark.sql(f"""
+    UPDATE local.bronze.sales_events
+    SET processing_status = 'processed'
+    WHERE date = '{process_date}'
+    AND processing_status = 'pending'
+""")
+
+record_count = final_silver_sales.count()
+logger.info(f"Processed {record_count} sales records to Silver layer")
+
+return record_count
 
 
 def process_inventory_to_silver(spark, process_date):
-    """Process inventory updates from Bronze to Silver with late arrival handling"""
-    logger.info(f"Processing inventory data for date: {process_date}")
-    
-    # Read from Bronze - include late arrivals from last 48 hours
-    bronze_inventory = spark.sql(f"""
-        SELECT * FROM local.bronze.inventory_updates
-        WHERE date(event_time) = '{process_date}'
-        AND processing_status = 'pending'
-        UNION ALL
-        SELECT * FROM local.bronze.inventory_updates
-        WHERE date(event_time) = '{process_date}'
-        AND processing_status = 'processed'
-        AND ingestion_time > date_sub(current_timestamp(), 2)
-        AND late_arrival_hours > 0
-    """)
-    
-    # Data quality checks for inventory
-    quality_checks = [
-        ("valid_product_id", col("product_id").between(1, 10), 15),
-        ("valid_store_id", col("store_id").between(1, 5), 15),
-        ("non_negative_stock", col("beginning_stock") >= 0, 20),
-        ("non_negative_restock", col("restocked_quantity") >= 0, 20),
-        ("non_negative_sold", col("sold_quantity") >= 0, 15),
-        ("non_negative_waste", col("waste_quantity") >= 0, 15)
-    ]
-    
-    # Transform with calculated fields
+logger.info(f"Processing inventory data for date: {process_date}")
+
+bronze_inventory = spark.sql(f"""
+    SELECT * FROM local.bronze.inventory_updates
+    WHERE date(event_time) = '{process_date}'
+    AND processing_status = 'pending'
+    UNION ALL
+    SELECT * FROM local.bronze.inventory_updates
+    WHERE date(event_time) = '{process_date}'
+    AND processing_status = 'processed'
+    AND ingestion_time > date_sub(current_timestamp(), 2)
+    AND late_arrival_hours > 0
+""")
+
+quality_checks = [
+    ("valid_product_id", col("product_id").between(1, 10), 15),
+    ("valid_store_id", col("store_id").between(1, 5), 15),
+    ("non_negative_stock", col("beginning_stock") >= 0, 20),
+    ("non_negative_restock", col("restocked_quantity") >= 0, 20),
+    ("non_negative_sold", col("sold_quantity") >= 0, 15),
+    ("non_negative_waste", col("waste_quantity") >= 0, 15)
+]
     silver_inventory = bronze_inventory \
         .withColumn("inventory_id", col("update_id")) \
         .withColumn("inventory_date", to_date(col("event_time"))) \
@@ -306,8 +288,19 @@ def main():
     spark = create_spark_session()
     spark.sparkContext.setLogLevel("WARN")
     
-    # Get process date (default to yesterday)
-    process_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    # Get the most recent date with data instead of assuming today
+    latest_date_result = spark.sql("""
+        SELECT MAX(date) as latest_date 
+        FROM local.bronze.sales_events 
+        WHERE date IS NOT NULL
+    """).collect()
+    
+    if latest_date_result and latest_date_result[0]["latest_date"]:
+        process_date = latest_date_result[0]["latest_date"].strftime("%Y-%m-%d")
+    else:
+        process_date = datetime.now().strftime("%Y-%m-%d")
+    
+    logger.info(f"Processing date determined as: {process_date}")
     
     try:
         logger.info(f"Starting Bronze to Silver ETL for date: {process_date}")

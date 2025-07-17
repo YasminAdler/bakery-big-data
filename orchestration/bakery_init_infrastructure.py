@@ -1,15 +1,9 @@
-"""
-Bakery Infrastructure Initialization DAG
-One-time setup DAG to initialize all infrastructure components
-"""
-
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 
-# Default arguments
 default_args = {
     'owner': 'data-engineering',
     'depends_on_past': False,
@@ -21,17 +15,15 @@ default_args = {
     'retry_delay': timedelta(minutes=2)
 }
 
-# DAG definition
 dag = DAG(
     'bakery_init_infrastructure',
     default_args=default_args,
     description='Initialize all infrastructure components for bakery data pipeline',
-    schedule_interval=None,  # Manual trigger only
+    schedule_interval=None,
     catchup=False,
     tags=['setup', 'initialization', 'infrastructure']
 )
 
-# Task: Create Docker network
 create_network = BashOperator(
     task_id='create_docker_network',
     bash_command="""
@@ -52,13 +44,11 @@ init_minio_buckets = BashOperator(
     echo "Creating MinIO buckets..."
     docker exec minio mc alias set myminio http://minio:9000 minioadmin minioadmin
     
-    # Create buckets
     for bucket in bronze silver gold iceberg-warehouse; do
         docker exec minio mc mb myminio/$bucket --ignore-existing
         echo "Created bucket: $bucket"
     done
     
-    # Set bucket policies
     docker exec minio mc policy set public myminio/bronze
     docker exec minio mc policy set public myminio/silver
     docker exec minio mc policy set public myminio/gold
@@ -69,7 +59,6 @@ init_minio_buckets = BashOperator(
     dag=dag
 )
 
-# Task: Initialize Iceberg tables
 init_iceberg_tables = BashOperator(
     task_id='init_iceberg_tables',
     bash_command="""
@@ -98,13 +87,11 @@ org.apache.hadoop:hadoop-aws:3.3.4 \
     dag=dag
 )
 
-# Task: Create Kafka topics
 create_kafka_topics = BashOperator(
     task_id='create_kafka_topics',
     bash_command="""
     echo "Creating Kafka topics..."
     
-    # Wait for Kafka to be ready
     sleep 30
     
     # Create topics with appropriate partitions and replication
@@ -137,18 +124,15 @@ create_kafka_topics = BashOperator(
     dag=dag
 )
 
-# Task: Load initial dimension data
 load_initial_data = BashOperator(
     task_id='load_initial_dimension_data',
     bash_command="""
     echo "Loading initial dimension data..."
     
-    # Create initial data files (in production, would load from external sources)
     docker exec spark-submit python -c "
 import json
 import os
 
-# Initial store data
 stores = [
     {'store_id': 1, 'location': 'Downtown', 'type': 'Regular', 'manager': 'John Smith'},
     {'store_id': 2, 'location': 'Mall', 'type': 'Kiosk', 'manager': 'Emma Johnson'},
@@ -157,7 +141,6 @@ stores = [
     {'store_id': 5, 'location': 'Suburb South', 'type': 'Regular', 'manager': 'David Wilson'}
 ]
 
-# Initial equipment data
 equipment = [
     {'equipment_id': 1, 'name': 'Industrial Oven #1', 'type': 'oven'},
     {'equipment_id': 2, 'name': 'Industrial Oven #2', 'type': 'oven'},
@@ -176,7 +159,6 @@ print('Initial data prepared')
     dag=dag
 )
 
-# Task: Verify setup
 verify_setup = BashOperator(
     task_id='verify_setup',
     bash_command="""
@@ -247,5 +229,4 @@ generate_setup_report = BashOperator(
     dag=dag
 )
 
-# Define task dependencies
 create_network >> [init_minio_buckets, create_kafka_topics] >> init_iceberg_tables >> load_initial_data >> verify_setup >> generate_setup_report 
