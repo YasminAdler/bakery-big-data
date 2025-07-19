@@ -25,15 +25,7 @@ x-airflow-common:
   volumes:
     - airflow-logs:/opt/airflow/logs
     - /var/run/docker.sock:/var/run/docker.sock
-    - ../makefile:/opt/airflow/makefile
-    - ../streaming/docker-compose.yml:/opt/airflow/streaming/docker-compose.yml
-    - ../processing/docker-compose.yml:/opt/airflow/processing/docker-compose.yml
-    - .:/opt/airflow/orchestration
-    - ./bakery_batch_etl.py:/opt/airflow/dags/bakery_batch_etl.py
-    - ./bakery_csv_etl_pipeline.py:/opt/airflow/dags/bakery_csv_etl_pipeline.py
-    - ./bakery_csv_manual_trigger.py:/opt/airflow/dags/bakery_csv_manual_trigger.py
-    - ./bakery_init_infrastructure.py:/opt/airflow/dags/bakery_init_infrastructure.py
-    - ./bakery_streaming_manager.py:/opt/airflow/dags/bakery_streaming_manager.py
+    - ./dags:/opt/airflow/dags
   user: "root"
   depends_on:
     postgres:

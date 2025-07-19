@@ -16,6 +16,13 @@ Data Sources → Kafka → Spark Processing → Iceberg Tables (Bronze/Silver/Go
 
 ##  Quick Start
 
+## 📝 Important Notes
+
+- **Always use WSL** for running commands to avoid Windows path issues
+- The pipeline automatically detects and processes the most recent available data
+- ETL jobs include data quality checks and error handling
+- Airflow DAGs run every 2 hours for automated processing
+
 ### Prerequisites
 - **WSL (Windows Subsystem for Linux)** - Required for proper file system handling
 - Docker and Docker Compose
@@ -87,16 +94,10 @@ bakery-big-data/
 | Command | Description |
 |---------|-------------|
 | `make start` | Start all services and initialize infrastructure |
-| `make init` | Reinitialize buckets, topics, and tables |
 | `make batch-etl` | Run Bronze→Silver→Gold ETL pipeline |
 | `make show-data` | Display record counts across all layers |
 | `make stop` | Stop all services |
 | `make clean` | Complete cleanup (containers, volumes, network) |
 
-## 📝 Important Notes
 
-- **Always use WSL** for running commands to avoid Windows path issues
-- The pipeline automatically detects and processes the most recent available data
-- ETL jobs include data quality checks and error handling
-- Airflow DAGs run every 2 hours for automated processing
 
