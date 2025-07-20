@@ -34,6 +34,7 @@ Data Sources → Kafka → Spark Processing → Iceberg Tables (Bronze/Silver/Go
 wsl
 cd /path/to/bakery-big-data
 
+make load-bronze
 make start
 ```
 
